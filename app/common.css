@@ -1,0 +1,315 @@
+:root {
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --sidebar: #f2f2f2;
+    --fg: #1f1f1f;
+    --fg-muted: #6b6b6b;
+    --border: rgba(0, 0, 0, .12);
+    --hover: rgba(0, 0, 0, .06);
+    --active: rgba(0, 0, 0, .1);
+    --accent: #3a7bd5;
+    --accent-fg: #ffffff;
+    --danger: #d43c3c;
+    --shadow: 0 0 0 1px rgba(0, 0, 0, .08), 0 8px 28px rgba(0, 0, 0, .16);
+    --radius: 10px;
+    --header-height: 46px;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #1e1e1e;
+        --surface: #2a2a2a;
+        --sidebar: #252525;
+        --fg: #ececec;
+        --fg-muted: #9d9d9d;
+        --border: rgba(255, 255, 255, .12);
+        --hover: rgba(255, 255, 255, .07);
+        --active: rgba(255, 255, 255, .12);
+        --accent: #5b9bf0;
+        --shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 8px 28px rgba(0, 0, 0, .5);
+        color-scheme: dark;
+    }
+}
+
+:root[data-theme="dark"] {
+    --bg: #1e1e1e;
+    --surface: #2a2a2a;
+    --sidebar: #252525;
+    --fg: #ececec;
+    --fg-muted: #9d9d9d;
+    --border: rgba(255, 255, 255, .12);
+    --hover: rgba(255, 255, 255, .07);
+    --active: rgba(255, 255, 255, .12);
+    --accent: #5b9bf0;
+    --shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 8px 28px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    font: 13px/1.4 var(--font-ui);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+.icon {
+    display: inline-flex;
+    flex: none;
+}
+
+button, select, input {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 30px;
+    min-width: 30px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    cursor: default;
+}
+
+button:hover {
+    background: var(--hover);
+}
+
+button:active, button[aria-pressed="true"] {
+    background: var(--active);
+}
+
+button:disabled {
+    opacity: .35;
+    background: none;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+button.icon-only {
+    padding: 0;
+    width: 32px;
+}
+
+button.suggested {
+    background: var(--accent);
+    color: var(--accent-fg);
+    padding: 0 14px;
+}
+
+button.suggested:hover {
+    filter: brightness(1.08);
+}
+
+button.destructive {
+    color: var(--danger);
+}
+
+input[type="search"], input[type="text"], textarea, select {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    padding: 5px 9px;
+    min-height: 30px;
+}
+
+input[type="search"]:focus, input[type="text"]:focus, textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-color: transparent;
+}
+
+input[type="range"] {
+    accent-color: var(--accent);
+}
+
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
+/* Header bar */
+.headerbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: var(--header-height);
+    padding: 0 8px;
+    flex: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    -webkit-app-region: drag;
+}
+
+.headerbar > * {
+    -webkit-app-region: no-drag;
+}
+
+.headerbar .title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+/* Leave room for the traffic lights with the overlay title bar on macOS */
+.mac .headerbar.leading {
+    padding-left: 80px;
+}
+
+.spacer {
+    flex: 1;
+}
+
+/* Popovers and menus */
+.popover {
+    position: fixed;
+    z-index: 100;
+    min-width: 180px;
+    max-width: min(360px, calc(100vw - 16px));
+    max-height: calc(100vh - 16px);
+    overflow: auto;
+    padding: 6px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.menu {
+    display: flex;
+    flex-direction: column;
+}
+
+.menu button {
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0 10px;
+    text-align: start;
+}
+
+.menu hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 5px 4px;
+}
+
+/* Dialogs */
+dialog {
+    border: 0;
+    padding: 0;
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: var(--shadow);
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+}
+
+dialog::backdrop {
+    background: rgba(0, 0, 0, .3);
+}
+
+.dialog-body {
+    padding: 20px;
+}
+
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 0 20px 20px;
+}
+
+.dialog-actions button {
+    padding: 0 14px;
+    background: var(--hover);
+}
+
+.dialog-actions button.suggested {
+    background: var(--accent);
+}
+
+.placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--fg-muted);
+}
+
+.placeholder h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.placeholder p {
+    margin: 0;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%);
+    z-index: 200;
+    max-width: calc(100vw - 32px);
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: rgba(30, 30, 30, .92);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+    pointer-events: none;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--active);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+    background: none;
+}

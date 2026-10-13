@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neo Foliate</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="info.css">
+<link rel="stylesheet" href="library.css">
+</head>
+<body>
+<div id="app">
+    <header class="headerbar leading" data-tauri-drag-region>
+        <button id="add-button" data-icon="plus" data-i18n-title="Add Books…"><span data-i18n="Open…"></span></button>
+        <div class="spacer" data-tauri-drag-region></div>
+        <span class="title" data-i18n="Library"></span>
+        <div class="spacer" data-tauri-drag-region></div>
+        <input id="search" type="search" data-i18n-placeholder="Search library" spellcheck="false">
+        <button id="view-button" class="icon-only" data-popover-toggle data-icon="more" data-i18n-title="View"></button>
+    </header>
+    <main id="main">
+        <div id="books" class="grid" role="list"></div>
+        <div id="empty" class="placeholder" hidden>
+            <img src="icon.png" alt="" width="96" height="96">
+            <h2 data-i18n="Your library is empty"></h2>
+            <p data-i18n="Open a book or drop files here"></p>
+            <p><button class="suggested" id="empty-add" data-i18n="Open…"></button></p>
+        </div>
+        <div id="no-results" class="placeholder" hidden>
+            <h2 data-i18n="No results"></h2>
+        </div>
+    </main>
+</div>
+
+<div id="view-menu" class="popover menu" hidden>
+    <button data-view="grid" data-icon="grid"><span data-i18n="Grid"></span></button>
+    <button data-view="list" data-icon="list"><span data-i18n="List"></span></button>
+    <hr>
+    <div class="menu-label" data-i18n="Sort by"></div>
+    <button data-sort="recent"><span data-i18n="Recently opened"></span></button>
+    <button data-sort="title"><span data-i18n="Title"></span></button>
+    <button data-sort="author"><span data-i18n="Author"></span></button>
+    <button data-sort="progress"><span data-i18n="Progress"></span></button>
+    <hr>
+    <div class="menu-label" data-i18n="Appearance"></div>
+    <button data-scheme="system"><span data-i18n="System"></span></button>
+    <button data-scheme="light"><span data-i18n="Light"></span></button>
+    <button data-scheme="dark"><span data-i18n="Dark"></span></button>
+    <hr>
+    <button id="about-button" data-icon="info"><span data-i18n="About"></span></button>
+</div>
+
+<div id="book-menu" class="popover menu" hidden>
+    <button data-action="open"><span data-i18n="Open"></span></button>
+    <button data-action="info" data-icon="info"><span data-i18n="Book Info"></span></button>
+    <button data-action="reveal" data-icon="folder"><span data-i18n="Show in Folder"></span></button>
+    <hr>
+    <button data-action="remove" class="destructive" data-icon="trash"><span data-i18n="Remove from Library"></span></button>
+</div>
+
+<dialog id="info-dialog">
+    <div class="info">
+        <img class="info-cover" alt="">
+        <div class="info-text">
+            <h2 class="info-title"></h2>
+            <p class="info-author"></p>
+            <div class="info-description"></div>
+            <dl class="info-meta"></dl>
+        </div>
+    </div>
+    <form method="dialog" class="dialog-actions"><button class="suggested" data-i18n="Close"></button></form>
+</dialog>
+
+<dialog id="about-dialog">
+    <div class="dialog-body about">
+        <img src="icon.png" alt="" width="96" height="96">
+        <h2>Neo Foliate</h2>
+        <p class="version"></p>
+        <p>A macOS and Windows port of <a href="https://github.com/johnfactotum/foliate">Foliate</a>, the e-book reader by John Factotum.</p>
+        <p>Rendering powered by <a href="https://github.com/johnfactotum/foliate-js">foliate-js</a> (MIT).</p>
+        <p class="license">GNU General Public License v3.0 or later</p>
+    </div>
+    <form method="dialog" class="dialog-actions"><button class="suggested" data-i18n="Close"></button></form>
+</dialog>
+
+<div id="drop-overlay" hidden><div data-i18n="Open a book or drop files here"></div></div>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="library.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+/* Book info */
+#info-dialog {
+    width: 600px;
+}
+
+.info {
+    display: flex;
+    gap: 20px;
+    padding: 24px;
+    max-height: calc(100vh - 140px);
+    overflow: auto;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.info-cover {
+    width: 150px;
+    align-self: flex-start;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .2);
+}
+
+.info-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.info-title {
+    margin: 0 0 4px;
+    font-size: 20px;
+}
+
+.info-author {
+    margin: 0 0 14px;
+    color: var(--fg-muted);
+}
+
+.info-description {
+    white-space: pre-wrap;
+    margin-bottom: 14px;
+}
+
+.info-meta {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 14px;
+    margin: 0;
+    font-size: 12px;
+}
+
+.info-meta dt {
+    color: var(--fg-muted);
+}
+
+.info-meta dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+    .info {
+        flex-direction: column;
+    }
+}

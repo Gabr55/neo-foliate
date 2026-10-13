@@ -1,0 +1,16 @@
+{
+  "name": "neo-foliate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read e-books in style — a macOS and Windows port of Foliate",
+  "author": "John Factotum (original Foliate); Neo Foliate contributors (port)",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icons": "tauri icon assets/icon.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.2"
+  }
+}

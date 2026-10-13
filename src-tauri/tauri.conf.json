@@ -1,0 +1,107 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Neo Foliate",
+  "version": "0.1.0",
+  "identifier": "io.github.neofoliate.NeoFoliate",
+  "build": {
+    "frontendDist": "../app"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline' blob:",
+        "img-src": "'self' blob: data:",
+        "font-src": "'self' blob: data:",
+        "media-src": "'self' blob: data:",
+        "connect-src": "'self' ipc: http://ipc.localhost blob: data:",
+        "frame-src": "'self' blob: data:",
+        "worker-src": "'self' blob:",
+        "object-src": "blob: data:",
+        "form-action": "'none'"
+      },
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg",
+      "nsis"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Read e-books in style",
+    "longDescription": "A macOS and Windows port of Foliate, the e-book reader by John Factotum. Supports EPUB, MOBI, KF8 (AZW3), FB2, CBZ and PDF.",
+    "copyright": "Foliate © John Factotum. Neo Foliate port contributors. GPL-3.0-or-later.",
+    "license": "GPL-3.0-or-later",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "epub"
+        ],
+        "name": "EPUB",
+        "description": "EPUB e-book",
+        "mimeType": "application/epub+zip",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mobi",
+          "azw",
+          "azw3",
+          "kf8"
+        ],
+        "name": "Kindle",
+        "description": "Kindle e-book",
+        "mimeType": "application/x-mobipocket-ebook",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "fb2",
+          "fbz"
+        ],
+        "name": "FictionBook",
+        "description": "FictionBook e-book",
+        "mimeType": "application/x-fictionbook+xml",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "cbz"
+        ],
+        "name": "Comic Book",
+        "description": "Comic book archive",
+        "mimeType": "application/vnd.comicbook+zip",
+        "role": "Viewer"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English",
+          "Russian"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

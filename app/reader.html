@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neo Foliate</title>
+<!-- Use the patched paginator (smoother, interruptible page turns) -->
+<script type="importmap">{ "imports": { "./foliate-js/paginator.js": "./engine/paginator.js" } }</script>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="info.css">
+<link rel="stylesheet" href="reader.css">
+</head>
+<body>
+<div id="app" class="sidebar-collapsed">
+    <aside id="sidebar">
+        <div class="sidebar-header headerbar leading" data-tauri-drag-region>
+            <div class="sidebar-tabs" role="tablist">
+                <button role="tab" class="icon-only" data-panel="toc" data-icon="list" data-i18n-title="Contents"></button>
+                <button role="tab" class="icon-only" data-panel="annotations" data-icon="highlight" data-i18n-title="Annotations"></button>
+                <button role="tab" class="icon-only" data-panel="bookmarks" data-icon="bookmark" data-i18n-title="Bookmarks"></button>
+                <button role="tab" class="icon-only" data-panel="search" data-icon="search" data-i18n-title="Search"></button>
+            </div>
+        </div>
+        <div class="book-card">
+            <img id="book-cover" alt="" hidden>
+            <div>
+                <div id="book-title"></div>
+                <div id="book-author"></div>
+            </div>
+        </div>
+        <section class="panel" data-panel="toc">
+            <div id="toc-view"></div>
+        </section>
+        <section class="panel" data-panel="annotations" hidden>
+            <div id="annotation-list" class="item-list"></div>
+            <div id="annotations-empty" class="placeholder" hidden>
+                <h2 data-i18n="No annotations"></h2>
+                <p data-i18n="Select text to highlight it or add a note"></p>
+            </div>
+            <div class="panel-footer">
+                <button id="export-annotations" data-icon="export" data-i18n-title="Export Annotations…"></button>
+                <button id="import-annotations" data-icon="import" data-i18n-title="Import Annotations…"></button>
+            </div>
+        </section>
+        <section class="panel" data-panel="bookmarks" hidden>
+            <div id="bookmark-list" class="item-list"></div>
+            <div id="bookmarks-empty" class="placeholder" hidden>
+                <h2 data-i18n="No bookmarks"></h2>
+            </div>
+        </section>
+        <section class="panel" data-panel="search" hidden>
+            <form id="search-form" class="search-form">
+                <input id="search-input" type="search" data-i18n-placeholder="Find in book" spellcheck="false" autocomplete="off">
+                <div class="search-options">
+                    <label><input type="checkbox" id="search-case"> <span data-i18n="Match case"></span></label>
+                    <label><input type="checkbox" id="search-words"> <span data-i18n="Whole words"></span></label>
+                </div>
+            </form>
+            <div id="search-status"></div>
+            <div id="search-results" class="item-list"></div>
+        </section>
+    </aside>
+
+    <div id="content">
+        <header id="headerbar" class="headerbar leading" data-tauri-drag-region>
+            <button id="sidebar-button" class="icon-only" data-icon="sidebar" data-i18n-title="Sidebar"></button>
+            <button id="back-button" class="icon-only" data-icon="back" data-i18n-title="Back" disabled></button>
+            <button id="forward-button" class="icon-only" data-icon="forward" data-i18n-title="Forward" disabled></button>
+            <span id="title" class="title" data-tauri-drag-region></span>
+            <button id="search-button" class="icon-only" data-icon="search" data-i18n-title="Find in book"></button>
+            <button id="bookmark-button" class="icon-only" data-icon="bookmark" data-i18n-title="Add Bookmark"></button>
+            <button id="tts-button" class="icon-only" data-icon="speaker" data-i18n-title="Read aloud"></button>
+            <button id="view-button" class="icon-only" data-popover-toggle data-icon="text" data-i18n-title="View"></button>
+            <button id="more-button" class="icon-only" data-popover-toggle data-icon="more" data-i18n-title="More"></button>
+        </header>
+
+        <div id="viewer">
+            <div id="loading" class="placeholder"><p data-i18n="Loading…"></p></div>
+            <div id="error" class="placeholder" hidden>
+                <h2 id="error-title"></h2>
+                <p id="error-message"></p>
+            </div>
+        </div>
+
+        <div id="tts-bar" hidden>
+            <button id="tts-prev" class="icon-only" data-icon="skip-back" data-i18n-title="Previous"></button>
+            <button id="tts-play" class="icon-only" data-icon="pause" data-i18n-title="Pause"></button>
+            <button id="tts-next" class="icon-only" data-icon="skip-forward" data-i18n-title="Next"></button>
+            <select id="tts-voice" data-i18n-title="Voice"></select>
+            <label class="tts-rate"><span data-i18n="Speed"></span>
+                <input id="tts-rate" type="range" min="0.5" max="2.5" step="0.1">
+            </label>
+            <button id="tts-stop" class="icon-only" data-icon="close" data-i18n-title="Stop"></button>
+        </div>
+
+        <footer id="navbar">
+            <button id="prev-button" class="icon-only" data-icon="back" data-i18n-title="Previous"></button>
+            <div class="progress">
+                <input id="progress-slider" type="range" min="0" max="1" step="any" value="0" list="tick-marks">
+                <datalist id="tick-marks"></datalist>
+            </div>
+            <span id="location-label"></span>
+            <span id="percent-label"></span>
+            <button id="next-button" class="icon-only" data-icon="forward" data-i18n-title="Next"></button>
+        </footer>
+    </div>
+</div>
+
+<!-- Appearance -->
+<div id="view-menu" class="popover settings" hidden>
+    <div class="segmented" id="scheme-buttons">
+        <button data-scheme="system" data-i18n="System"></button>
+        <button data-scheme="light" data-i18n="Light"></button>
+        <button data-scheme="dark" data-i18n="Dark"></button>
+    </div>
+    <div id="theme-list" class="theme-list"></div>
+    <div class="reflow-only">
+        <div class="row">
+            <span data-i18n="Font size"></span>
+            <div class="stepper">
+                <button id="font-smaller" class="icon-only small-a">A</button>
+                <output id="font-size-value"></output>
+                <button id="font-larger" class="icon-only large-a">A</button>
+            </div>
+        </div>
+        <div class="row">
+            <span data-i18n="Font"></span>
+            <select id="font-family">
+                <option value="publisher" data-i18n="Publisher font"></option>
+                <option value="serif" data-i18n="Serif"></option>
+                <option value="sans-serif" data-i18n="Sans-serif"></option>
+            </select>
+        </div>
+        <div class="row">
+            <span data-i18n="Line spacing"></span>
+            <input id="line-height" type="range" min="1" max="2.4" step="0.05">
+        </div>
+        <div class="row">
+            <span data-i18n="Margins"></span>
+            <input id="gap" type="range" min="0" max="0.2" step="0.01">
+        </div>
+        <div class="row">
+            <span data-i18n="Max width"></span>
+            <input id="max-inline-size" type="range" min="400" max="1600" step="20">
+        </div>
+        <div class="row">
+            <span data-i18n="Layout"></span>
+            <div class="segmented" id="flow-buttons">
+                <button data-flow="paginated" data-i18n="Paginated"></button>
+                <button data-flow="scrolled" data-i18n="Scrolled"></button>
+            </div>
+        </div>
+        <div class="row">
+            <span data-i18n="Columns"></span>
+            <div class="segmented" id="column-buttons">
+                <button data-columns="1">1</button>
+                <button data-columns="2">2</button>
+                <button data-columns="3">3</button>
+            </div>
+        </div>
+        <label class="row"><span data-i18n="Justify"></span><input type="checkbox" id="justify"></label>
+        <label class="row"><span data-i18n="Hyphenate"></span><input type="checkbox" id="hyphenate"></label>
+        <label class="row"><span data-i18n="Animations"></span><input type="checkbox" id="animated"></label>
+    </div>
+    <div class="fixed-only row">
+        <span data-i18n="Zoom"></span>
+        <div class="stepper">
+            <button id="zoom-out" class="icon-only" data-icon="zoom-out"></button>
+            <output id="zoom-value"></output>
+            <button id="zoom-in" class="icon-only" data-icon="zoom-in"></button>
+        </div>
+    </div>
+    <label class="row"><span data-i18n="Invert in dark mode"></span><input type="checkbox" id="invert"></label>
+</div>
+
+<div id="more-menu" class="popover menu" hidden>
+    <button data-action="library" data-icon="library"><span data-i18n="Show Library"></span></button>
+    <button data-action="info" data-icon="info"><span data-i18n="Book Info"></span></button>
+    <hr>
+    <button data-action="export" data-icon="export"><span data-i18n="Export Annotations…"></span></button>
+    <button data-action="import" data-icon="import"><span data-i18n="Import Annotations…"></span></button>
+    <hr>
+    <button data-action="print" data-icon="print"><span data-i18n="Print"></span></button>
+    <button data-action="fullscreen" data-icon="fullscreen"><span data-i18n="Fullscreen"></span></button>
+</div>
+
+<!-- Selection -->
+<div id="selection-menu" class="popover selection-menu" hidden>
+    <div class="selection-actions">
+        <button data-action="copy" data-icon="copy" data-i18n-title="Copy"></button>
+        <button data-action="highlight" data-icon="highlight" data-i18n-title="Highlight"></button>
+        <button data-action="note" data-icon="note" data-i18n-title="Add Note…"></button>
+        <button data-action="search" data-icon="search" data-i18n-title="Find in book"></button>
+        <button data-action="speak" data-icon="speaker" data-i18n-title="Speak from here"></button>
+        <button data-action="lookup" data-icon="globe" data-i18n-title="Look up"></button>
+        <button data-action="translate" data-icon="translate" data-i18n-title="Translate"></button>
+    </div>
+</div>
+
+<div id="annotation-menu" class="popover annotation-menu" hidden>
+    <div class="color-row" id="annotation-colors"></div>
+    <textarea id="annotation-note" rows="3" data-i18n-placeholder="Note"></textarea>
+    <div class="annotation-actions">
+        <button data-action="copy" data-icon="copy" data-i18n-title="Copy"></button>
+        <span class="spacer"></span>
+        <button data-action="delete" class="destructive" data-icon="trash" data-i18n-title="Delete"></button>
+    </div>
+</div>
+
+<!-- Dialogs -->
+<dialog id="footnote-dialog">
+    <div class="footnote">
+        <header></header>
+        <main></main>
+        <form method="dialog">
+            <input name="href" type="hidden">
+            <button value="close" data-i18n="Close"></button>
+            <button value="go"></button>
+        </form>
+    </div>
+</dialog>
+
+<dialog id="info-dialog">
+    <div class="info">
+        <img class="info-cover" alt="">
+        <div class="info-text">
+            <h2 class="info-title"></h2>
+            <p class="info-author"></p>
+            <div class="info-description"></div>
+            <dl class="info-meta"></dl>
+        </div>
+    </div>
+    <form method="dialog" class="dialog-actions"><button class="suggested" data-i18n="Close"></button></form>
+</dialog>
+
+<dialog id="image-dialog">
+    <img id="image-view" alt="">
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="reader.js"></script>
+</body>
+</html>

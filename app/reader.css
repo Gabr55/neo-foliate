@@ -1,0 +1,724 @@
+:root {
+    --book-bg: #ffffff;
+    --book-fg: #000000;
+    --book-link: #0066cc;
+    --sidebar-width: 300px;
+}
+
+#app {
+    display: flex;
+    height: 100%;
+}
+
+/* Sidebar */
+#sidebar {
+    display: flex;
+    flex-direction: column;
+    width: var(--sidebar-width);
+    flex: none;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    transition: margin-left .2s ease;
+    z-index: 20;
+}
+
+.sidebar-collapsed #sidebar {
+    margin-left: calc(-1 * var(--sidebar-width) - 1px);
+}
+
+.sidebar-header {
+    background: var(--sidebar);
+    justify-content: flex-end;
+}
+
+.sidebar-tabs {
+    display: flex;
+    gap: 2px;
+}
+
+.sidebar-tabs button[aria-selected="true"] {
+    background: var(--active);
+    color: var(--accent);
+}
+
+.book-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+#book-cover {
+    width: 44px;
+    border-radius: 3px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+
+#book-title {
+    font-weight: 600;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+#book-author {
+    font-size: 12px;
+    color: var(--fg-muted);
+}
+
+.panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#toc-view, .item-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+/* Table of contents (foliate-js tree) */
+#toc-view ol, #toc-view li {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#toc-view a, #toc-view span {
+    display: block;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 1px 0;
+}
+
+#toc-view a {
+    color: inherit;
+    text-decoration: none;
+}
+
+#toc-view a:hover {
+    background: var(--hover);
+}
+
+#toc-view span {
+    color: var(--fg-muted);
+}
+
+#toc-view svg {
+    margin-inline-start: -22px;
+    padding-inline-start: 5px;
+    padding-inline-end: 6px;
+    fill: currentColor;
+    opacity: .5;
+    transition: transform .15s ease;
+    vertical-align: -1px;
+}
+
+#toc-view svg:hover {
+    opacity: 1;
+}
+
+#toc-view [aria-current] {
+    font-weight: 600;
+    background: var(--active);
+}
+
+#toc-view [aria-expanded="false"] svg {
+    transform: rotate(-90deg);
+}
+
+#toc-view [aria-expanded="false"] + [role="group"] {
+    display: none;
+}
+
+/* Lists: annotations, bookmarks, search */
+.item-heading {
+    padding: 10px 8px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    min-height: 34px;
+    padding: 7px 8px;
+    border-radius: 7px;
+    text-align: start;
+    justify-content: flex-start;
+    line-height: 1.4;
+}
+
+.item-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.quote {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.note {
+    color: var(--fg-muted);
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.swatch {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
+}
+
+.swatch.line {
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+    height: 8px;
+    border-bottom: 2px solid red;
+}
+
+.swatch.squiggly {
+    border-bottom-style: dotted;
+}
+
+.swatch.strikethrough {
+    border-bottom: 0;
+    height: 12px;
+    background: linear-gradient(transparent 5px, red 5px, red 7px, transparent 7px);
+}
+
+.bookmark-item {
+    padding: 0;
+    gap: 0;
+    align-items: center;
+}
+
+.bookmark-item:hover {
+    background: var(--hover);
+}
+
+.bookmark-item .item-main {
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 7px 8px;
+    background: none;
+    text-align: start;
+}
+
+.bookmark-item .item-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.item-remove {
+    opacity: 0;
+}
+
+.bookmark-item:hover .item-remove {
+    opacity: .7;
+}
+
+.panel-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 6px;
+    border-top: 1px solid var(--border);
+}
+
+.search-form {
+    padding: 10px 10px 4px;
+}
+
+#search-input {
+    width: 100%;
+}
+
+.search-options {
+    display: flex;
+    gap: 14px;
+    padding: 8px 2px 2px;
+    font-size: 12px;
+    color: var(--fg-muted);
+}
+
+.search-options label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+#search-status {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--fg-muted);
+}
+
+.search-item {
+    display: block;
+}
+
+.search-item .item-text {
+    display: block;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.search-item mark {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: inherit;
+    border-radius: 2px;
+}
+
+/* Main content */
+#content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--book-bg);
+    color: var(--book-fg);
+}
+
+#content .headerbar, #navbar, #tts-bar {
+    background: var(--book-bg);
+    color: var(--book-fg);
+    border-color: color-mix(in srgb, var(--book-fg) 12%, transparent);
+}
+
+#content button:hover {
+    background: color-mix(in srgb, var(--book-fg) 8%, transparent);
+}
+
+#content button:active, #content button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--book-fg) 14%, transparent);
+}
+
+#content button.accent {
+    color: var(--book-link);
+}
+
+/* When the sidebar is open the header no longer sits under the traffic lights */
+.mac #app:not(.sidebar-collapsed) #headerbar {
+    padding-left: 8px;
+}
+
+#headerbar .title {
+    font-weight: 500;
+    opacity: .8;
+}
+
+#viewer {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+#viewer > .placeholder {
+    position: absolute;
+    inset: 0;
+    color: color-mix(in srgb, var(--book-fg) 60%, transparent);
+}
+
+#viewer > .placeholder h2 {
+    color: var(--book-fg);
+}
+
+foliate-view {
+    position: absolute;
+    inset: 0;
+    --overlayer-highlight-opacity: .35;
+    --overlayer-highlight-blend-mode: multiply;
+}
+
+foliate-view::part(head), foliate-view::part(foot) {
+    font: 11px var(--font-ui);
+    opacity: .6;
+}
+
+.invert foliate-view::part(filter) {
+    filter: invert(1) hue-rotate(180deg);
+}
+
+.dark:not(.invert) foliate-view {
+    --overlayer-highlight-blend-mode: screen;
+    --overlayer-highlight-opacity: .3;
+}
+
+/* Navigation bar */
+#navbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 42px;
+    padding: 0 8px;
+    flex: none;
+    border-top: 1px solid;
+    font-size: 12px;
+}
+
+.progress {
+    flex: 1;
+    display: flex;
+}
+
+#progress-slider {
+    width: 100%;
+    accent-color: var(--book-link);
+}
+
+#location-label, #percent-label {
+    white-space: nowrap;
+    opacity: .7;
+    font-variant-numeric: tabular-nums;
+}
+
+#percent-label {
+    min-width: 3.2em;
+    text-align: end;
+}
+
+/* Text-to-speech */
+#tts-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    flex: none;
+    border-top: 1px solid;
+    flex-wrap: wrap;
+}
+
+#tts-voice {
+    max-width: 220px;
+    background: transparent;
+    color: inherit;
+    border-color: color-mix(in srgb, var(--book-fg) 20%, transparent);
+}
+
+.tts-rate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    opacity: .85;
+}
+
+#tts-stop {
+    margin-left: auto;
+}
+
+/* Fullscreen: toolbars float and hide */
+.fullscreen #headerbar, .fullscreen #navbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+
+.fullscreen #headerbar {
+    top: 0;
+    padding-left: 8px;
+}
+
+.fullscreen #navbar {
+    bottom: 0;
+}
+
+.fullscreen.reveal #headerbar, .fullscreen.reveal #navbar,
+.fullscreen #headerbar:focus-within, .fullscreen #navbar:focus-within {
+    opacity: 1;
+}
+
+.fullscreen #sidebar {
+    padding-top: 0;
+}
+
+/* Settings popover */
+.settings {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+}
+
+.settings .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 30px;
+}
+
+.settings .row > span {
+    color: var(--fg-muted);
+}
+
+.settings input[type="range"] {
+    width: 150px;
+}
+
+.settings select {
+    width: 150px;
+}
+
+.reflow-only {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fixed-layout .reflow-only, body:not(.fixed-layout) .fixed-only {
+    display: none;
+}
+
+.segmented {
+    display: flex;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--hover);
+}
+
+.segmented button {
+    flex: 1;
+    min-height: 26px;
+    padding: 0 10px;
+}
+
+.segmented button[aria-pressed="true"] {
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+}
+
+.stepper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stepper output {
+    min-width: 3em;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.small-a {
+    font-size: 12px;
+}
+
+.large-a {
+    font-size: 18px;
+}
+
+.theme-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.theme-button {
+    padding: 3px;
+    gap: 0;
+    min-height: 40px;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 2px solid transparent;
+}
+
+.theme-button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: none;
+}
+
+.theme-swatch {
+    flex: 1;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Georgia, serif;
+    font-size: 13px;
+}
+
+.theme-swatch.light {
+    border-radius: 6px 0 0 6px;
+}
+
+.theme-swatch.dark {
+    border-radius: 0 6px 6px 0;
+}
+
+/* Selection and annotation popovers */
+.selection-menu {
+    min-width: 0;
+    padding: 4px;
+}
+
+.selection-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.annotation-menu {
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+}
+
+.color-row {
+    display: flex;
+    justify-content: space-between;
+}
+
+.color-button {
+    width: 28px;
+    min-width: 28px;
+}
+
+.color-button .swatch {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+}
+
+.color-button .swatch.line {
+    height: 10px;
+}
+
+.color-button[aria-pressed="true"] {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: none;
+}
+
+#annotation-note {
+    width: 100%;
+    resize: vertical;
+    font: inherit;
+    color: inherit;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.annotation-actions {
+    display: flex;
+}
+
+/* Footnotes */
+#footnote-dialog {
+    width: 420px;
+    height: 400px;
+    background: var(--book-bg);
+    color: var(--book-fg);
+}
+
+.footnote {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.footnote header {
+    text-align: center;
+    font-weight: 600;
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.footnote main {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+.footnote main foliate-view {
+    position: absolute;
+    inset: 0;
+}
+
+.footnote form {
+    display: flex;
+    border-top: 1px solid var(--border);
+}
+
+.footnote form button {
+    flex: 1;
+    min-height: 42px;
+    border-radius: 0;
+    font-weight: 600;
+}
+
+.footnote form button + button {
+    border-inline-start: 1px solid var(--border);
+}
+
+/* Image viewer */
+#image-dialog {
+    background: transparent;
+    box-shadow: none;
+    max-width: 96vw;
+    max-height: 96vh;
+}
+
+#image-dialog::backdrop {
+    background: rgba(0, 0, 0, .8);
+}
+
+#image-view {
+    display: block;
+    max-width: 94vw;
+    max-height: 94vh;
+    object-fit: contain;
+}
+
+/* Narrow windows: sidebar overlays the book */
+@media (max-width: 760px) {
+    #sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        box-shadow: var(--shadow);
+    }
+    .mac #app:not(.sidebar-collapsed) #headerbar {
+        padding-left: 80px;
+    }
+    #location-label {
+        display: none;
+    }
+}
