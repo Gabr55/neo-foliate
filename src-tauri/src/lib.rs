@@ -259,8 +259,10 @@ fn remove_library_copy(app: &AppHandle, path: &str) {
     }
 }
 
+// Commands that create windows must be async: on Windows, building a webview
+// from a synchronous command deadlocks and leaves a blank window
 #[tauri::command]
-fn open_reader(app: AppHandle, path: String) -> Result<(), String> {
+async fn open_reader(app: AppHandle, path: String) -> Result<(), String> {
     #[cfg(desktop)]
     return open_reader_window(&app, &path);
     #[cfg(mobile)]
@@ -271,7 +273,11 @@ fn open_reader(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn show_library(app: AppHandle) -> Result<(), String> {
+async fn show_library(app: AppHandle) -> Result<(), String> {
+    show_library_window(&app)
+}
+
+fn show_library_window(app: &AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
         #[cfg(desktop)]
         {
@@ -282,7 +288,7 @@ fn show_library(app: AppHandle) -> Result<(), String> {
         let _ = win;
         return Ok(());
     }
-    let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::App("index.html".into()));
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()));
     #[cfg(desktop)]
     let builder = with_platform_chrome(
         builder
@@ -361,11 +367,15 @@ pub fn run() {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-            let before = app.webview_windows().len();
-            open_paths_from_args(app, &args, Some(cwd.as_str()));
-            if app.webview_windows().len() == before {
-                let _ = show_library(app.clone());
-            }
+            // Not inside the callback: creating windows there deadlocks on Windows
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let before = app.webview_windows().len();
+                open_paths_from_args(&app, &args, Some(cwd.as_str()));
+                if app.webview_windows().len() == before {
+                    let _ = show_library_window(&app);
+                }
+            });
         }));
     }
 
@@ -396,7 +406,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            show_library(handle.clone())?;
+            show_library_window(&handle)?;
             #[cfg(desktop)]
             {
                 let args: Vec<String> = std::env::args().collect();
