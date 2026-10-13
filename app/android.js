@@ -64,6 +64,7 @@ export const android = {
     setKeepScreenOn: on => native?.setKeepScreenOn(!!on),
     setImmersive: on => native?.setImmersive(!!on),
     setVolumeKeys: on => native?.setVolumeKeys(!!on),
+    setBrightness: value => native?.setBrightness(value ?? -1),
     setSystemBars: lightBackground => native?.setSystemBars(!!lightBackground),
     tts: {
         voices: () => {

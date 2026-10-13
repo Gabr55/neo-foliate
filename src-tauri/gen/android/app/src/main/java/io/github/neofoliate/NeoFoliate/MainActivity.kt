@@ -23,6 +23,8 @@ class MainActivity : TauriActivity() {
 
   @SuppressLint("JavascriptInterface")
   override fun onWebViewCreate(webView: WebView) {
+    // Let the window background show until the page paints (no white flash)
+    webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
     val bridge = NeoBridge(this, webView)
     this.bridge = bridge
     webView.addJavascriptInterface(bridge, "NeoAndroid")

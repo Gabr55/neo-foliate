@@ -207,6 +207,15 @@ class NeoBridge(private val activity: Activity, private val webView: WebView) {
         controller.isAppearanceLightNavigationBars = lightBackground
     }
 
+    // Screen brightness for this window, 0–1; a negative value follows the system
+    @JavascriptInterface
+    fun setBrightness(value: Double) = main.post {
+        val params = activity.window.attributes
+        params.screenBrightness = if (value < 0) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            else value.toFloat().coerceIn(0.01f, 1f)
+        activity.window.attributes = params
+    }
+
     @JavascriptInterface
     fun setVolumeKeys(on: Boolean) {
         volumeKeys = on

@@ -494,7 +494,7 @@ foliate-view::part(head), foliate-view::part(foot) {
     background: var(--accent);
 }
 
-#location-label, #percent-label {
+#location-label, #percent-label, #time-label {
     white-space: nowrap;
     opacity: .7;
     font-variant-numeric: tabular-nums;

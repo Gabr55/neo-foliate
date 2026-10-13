@@ -1,6 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.neo_foliate" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Same color as the page background, so there is no white flash at startup -->
+        <item name="android:windowBackground">@color/neo_window_background</item>
     </style>
 </resources>

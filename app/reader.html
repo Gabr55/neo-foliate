@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Neo Foliate</title>
 <!-- Use the patched paginator (smoother, interruptible page turns) -->
 <script type="importmap">{ "imports": { "./foliate-js/paginator.js": "./engine/paginator.js" } }</script>
@@ -119,6 +119,7 @@
                     </span>
                 </button>
                 <span id="location-label"></span>
+                <span id="time-label" class="desktop-only"></span>
                 <span id="percent-label"></span>
                 <button id="next-button" class="icon-only desktop-only" data-icon="forward" data-i18n-title="Next"></button>
             </div>
@@ -198,6 +199,11 @@
         </div>
     </div>
     <label class="row"><span data-i18n="Invert in dark mode"></span><input type="checkbox" id="invert"></label>
+    <div class="row android-only">
+        <span data-i18n="Brightness"></span>
+        <input id="brightness" type="range" min="0.02" max="1" step="0.01">
+    </div>
+    <label class="row android-only"><span data-i18n="System brightness"></span><input type="checkbox" id="brightness-system"></label>
     <label class="row android-only"><span data-i18n="Volume keys turn pages"></span><input type="checkbox" id="volume-keys"></label>
 </div>
 

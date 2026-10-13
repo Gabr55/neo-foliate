@@ -1,5 +1,5 @@
 import {
-    api, t, el, icon, translateDOM, renderIcons, loadFile, fileName, isMac, isMobile,
+    api, t, el, icon, translateDOM, renderIcons, loadFile, fileName, isMac, isMobile, pickBooks,
     showDialog, pushOverlay, popOverlay,
     formatLanguageMap, formatAuthors, percentFormat, debounce, themes, invertColor,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
@@ -177,6 +177,12 @@ const getPosition = target => {
 }
 
 const positionToRect = ({ point: { x, y } }) => ({ left: x, right: x, top: y, bottom: y })
+
+const minuteFormat = new Intl.NumberFormat(navigator.language || 'en', { style: 'unit', unit: 'minute', unitDisplay: 'short' })
+const hourFormat = new Intl.NumberFormat(navigator.language || 'en', { style: 'unit', unit: 'hour', unitDisplay: 'short', maximumFractionDigits: 1 })
+const formatMinutes = minutes => minutes < 1 ? '< ' + minuteFormat.format(1)
+    : minutes < 60 ? minuteFormat.format(Math.round(minutes))
+        : hourFormat.format(Math.round(minutes / 6) / 10)
 
 const isLightColor = hex => {
     const n = parseInt(String(hex).replace('#', '').slice(0, 6), 16)
@@ -362,7 +368,10 @@ class Reader {
         $('#error-title').textContent = title
         $('#error-message').textContent = message
         $('#navbar').hidden = true
-        for (const b of $$('#headerbar button')) if (b.id !== 'sidebar-button') b.disabled = true
+        $('#mini-progress').hidden = true
+        for (const b of $$('#headerbar button'))
+            if (b.id !== 'sidebar-button' && b.id !== 'library-button') b.disabled = true
+        this.setChrome(true)
     }
 
     // --- Appearance ---
@@ -391,6 +400,7 @@ class Reader {
             android.setSystemBars(isLightColor(getComputedStyle(document.documentElement)
                 .getPropertyValue('--book-bg').trim()))
             this.syncVolumeKeys()
+            android.setBrightness(prefs.brightness)
         }
 
         const renderer = this.view?.renderer
@@ -452,6 +462,10 @@ class Reader {
         $('#animated').checked = prefs.animated
         $('#invert').checked = prefs.invert
         $('#volume-keys').checked = prefs.volumeKeys !== false
+        const systemBrightness = !(prefs.brightness >= 0)
+        $('#brightness-system').checked = systemBrightness
+        $('#brightness').disabled = systemBrightness
+        if (!systemBrightness) $('#brightness').value = prefs.brightness
     }
 
     // --- Events from the view ---
@@ -500,7 +514,7 @@ class Reader {
 
     #onRelocate(detail) {
         this.location = detail
-        const { fraction, location, tocItem, pageItem, cfi } = detail
+        const { fraction, location, tocItem, pageItem, cfi, time } = detail
         const { heads, feet } = this.view.renderer
         const locText = (a, b) => t('Loc %s of %s', a, b)
         const pageText = label => this.pageTotal
@@ -524,16 +538,28 @@ class Reader {
             }
         }
 
-        $('#progress-fill').style.width = `${fraction * 100}%`
-        $('#mini-fill').style.width = `${fraction * 100}%`
-        $('#percent-label').textContent = percentFormat.format(fraction)
+        // Some intermediate relocations (mid-layout) carry no valid progress
+        if (Number.isFinite(fraction)) {
+            $('#progress-fill').style.width = `${fraction * 100}%`
+            $('#mini-fill').style.width = `${fraction * 100}%`
+            $('#percent-label').textContent = percentFormat.format(fraction)
+        }
         $('#location-label').textContent = pageItem ? pageText(pageItem.label)
             : location ? locText(location.current + 1, location.total) : ''
         if (tocItem?.href) this.#tocView?.setCurrentHref?.(tocItem.href)
-        $('#subtitle').textContent = tocItem?.label ?? ''
+        const sectionTime = Number.isFinite(time?.section) ? time.section : null
+        const totalTime = Number.isFinite(time?.total) ? time.total : null
+        const chapterLeft = sectionTime != null ? t('%s left in chapter', formatMinutes(sectionTime)) : ''
+        const bookLeft = totalTime != null ? t('%s left in book', formatMinutes(totalTime)) : ''
+        $('#subtitle').textContent = [tocItem?.label,
+            sectionTime != null ? t('%s left', formatMinutes(sectionTime)) : ''].filter(Boolean).join(' · ')
+        $('#time-label').textContent = chapterLeft
+        $('#time-label').title = bookLeft
+        $('#progress-button').title = [Number.isFinite(fraction) ? percentFormat.format(fraction) : '', bookLeft]
+            .filter(Boolean).join(' · ')
 
         this.data.lastLocation = cfi
-        if (location) this.data.progress = [location.current, location.total]
+        if (Number.isFinite(location?.current) && location.total) this.data.progress = [location.current, location.total]
         this.save()
         this.#updateBookmarkButton()
     }
@@ -714,6 +740,12 @@ class Reader {
         if (mod && k === '0') { e.preventDefault(); return this.zoomText(0) }
         if (mod && k === 'l') { e.preventDefault(); return api.showLibrary() }
         if (mod && k === 'i') { e.preventDefault(); return this.showInfo() }
+        if (mod && k === 'g') { e.preventDefault(); return this.openJump($('#progress-button').getBoundingClientRect()) }
+        if (mod && k === 'o' && !isMobile) {
+            e.preventDefault()
+            return pickBooks().then(paths => paths.forEach(path => api.openReader(path)))
+        }
+        if (mod && k === 'w' && !isMobile) { e.preventDefault(); return appWindow.close() }
         if (k === 'F11' || (isMac && e.metaKey && e.ctrlKey && k === 'f')) {
             e.preventDefault()
             return this.toggleFullscreen()
@@ -783,6 +815,10 @@ class Reader {
             prefs.sidebarOpen = !collapsed
             savePrefs(prefs)
         }
+    }
+
+    closeDrawerOnPhone() {
+        if (isMobile || window.innerWidth <= 760) this.toggleSidebar(false)
     }
 
     showPanel(name, reveal = true) {
@@ -1107,9 +1143,12 @@ class Reader {
     }
 
     async importAnnotations() {
-        const path = await api.openDialog({ filters: [{ name: 'JSON', extensions: ['json'] }] })
-        if (!path) return
+        const picked = await api.openDialog({
+            filters: isMobile ? undefined : [{ name: 'JSON', extensions: ['json'] }],
+        })
+        if (!picked) return
         try {
+            const path = await api.readablePath(picked)
             const text = new TextDecoder().decode(await api.readBook(path))
             const json = JSON.parse(text)
             const list = json.annotations ?? []
@@ -1177,7 +1216,10 @@ class Reader {
             return el('div', { class: 'item bookmark-item' },
                 el('button', {
                     class: 'item-main',
-                    onclick: () => this.navigate(() => this.view.goTo(cfi)),
+                    onclick: () => {
+                        this.navigate(() => this.view.goTo(cfi))
+                        this.closeDrawerOnPhone()
+                    },
                 }, icon('bookmark'), el('span', { class: 'item-text' }, item?.label || cfi)),
                 el('button', {
                     class: 'icon-only item-remove',
@@ -1214,7 +1256,10 @@ class Reader {
         }
         const addItem = (cfi, excerpt) => results.append(el('button', {
             class: 'item search-item',
-            onclick: () => this.navigate(() => this.view.goTo(cfi)),
+            onclick: () => {
+                this.navigate(() => this.view.goTo(cfi))
+                this.closeDrawerOnPhone()
+            },
         }, el('span', { class: 'item-text' },
             excerpt.pre, el('mark', {}, excerpt.match), excerpt.post)))
         try {
@@ -1402,6 +1447,13 @@ rangePref('#max-inline-size', 'maxInlineSize')
 for (const key of ['justify', 'hyphenate', 'animated', 'invert'])
     $('#' + key).addEventListener('change', e => reader.setPref(key, e.target.checked))
 $('#volume-keys').addEventListener('change', e => reader.setPref('volumeKeys', e.target.checked))
+$('#brightness').addEventListener('input', e => {
+    // live while dragging; saved when released
+    android.setBrightness(parseFloat(e.target.value))
+})
+$('#brightness').addEventListener('change', e => reader.setPref('brightness', parseFloat(e.target.value)))
+$('#brightness-system').addEventListener('change', e =>
+    reader.setPref('brightness', e.target.checked ? -1 : parseFloat($('#brightness').value) || 0.5))
 
 // Selection and annotation popovers
 $('#selection-menu').addEventListener('click', e => {
@@ -1476,6 +1528,7 @@ if (!isMobile) {
             android.setVolumeKeys(false)
             android.setKeepScreenOn(false)
             android.setImmersive(false)
+            android.setBrightness(-1)
         }
     })
     document.addEventListener('visibilitychange', () => {

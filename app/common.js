@@ -40,6 +40,10 @@ export const api = {
         else location.replace('index.html')
     },
     libraryFilesPath: () => invoke('library_files_path'),
+    // A path the backend can read, for a file picked once (content:// on Android)
+    readablePath: async path => isAndroid && path?.startsWith('content:')
+        ? android.copyToLibrary(path, await invoke('temp_files_path'))
+        : path,
     openURL: url => tauri.opener.openUrl(url),
     revealInFolder: path => tauri.opener.revealItemInDir(path),
     openDialog: opts => tauri.dialog.open(opts),
@@ -204,6 +208,10 @@ const strings = {
         'Go to Reference': 'Перейти к примечанию',
         'More': 'Ещё',
         'Listen': 'Слушать',
+        'Brightness': 'Яркость',
+        'System brightness': 'Как в системе',
+        '%s left': 'осталось %s',
+        '%s left in book': 'До конца книги: %s',
         'Pages turn by themselves while reading aloud': 'Во время чтения вслух страницы листаются сами',
         'Go to Location': 'Перейти к месту',
         'Go': 'Перейти',
@@ -429,6 +437,8 @@ export const defaultPrefs = {
     librarySort: 'recent',
     ttsVoice: '',
     ttsRate: 1,
+    // -1 follows the system brightness (Android)
+    brightness: -1,
 }
 
 // Preferences live in settings.json next to the library (see `settings_get`);

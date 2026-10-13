@@ -34,10 +34,17 @@ const toast = (() => {
 // --- Covers ----------------------------------------------------------------
 
 const coverURLs = new Map()
+const loadedCovers = new Map() // key -> object URL, once loaded
 const getCoverURL = async key => {
     if (coverURLs.has(key)) return coverURLs.get(key)
     const promise = api.getCover(key)
         .then(blob => blob ? URL.createObjectURL(blob) : null)
+        .then(url => {
+            // a book opened for the first time may get its cover a bit later
+            if (url) loadedCovers.set(key, url)
+            else coverURLs.delete(key)
+            return url
+        })
         .catch(() => null)
     coverURLs.set(key, promise)
     return promise
@@ -57,8 +64,13 @@ const makeCover = item => {
             el('span', { class: 'cover-fallback-title' }, title),
             el('span', { class: 'cover-fallback-author' }, author)))
     cover.style.setProperty('--hue', hashHue(title))
-    coverObserver.observe(cover)
     cover.dataset.key = item.key
+    // Covers already loaded show at once, so re-rendering does not flicker
+    const url = loadedCovers.get(item.key)
+    if (url) {
+        cover.classList.add('has-image')
+        cover.append(el('img', { alt: '', draggable: 'false', src: url }))
+    } else coverObserver.observe(cover)
     return cover
 }
 
@@ -206,13 +218,20 @@ const render = () => {
         b.setAttribute('aria-pressed', b.dataset.scheme === prefs.colorScheme)
 }
 
+let lastListing = ''
 const refresh = async () => {
+    let listing
     try {
-        items = await api.listLibrary()
+        listing = await api.listLibrary()
     } catch (e) {
         console.error(e)
-        items = []
+        listing = []
     }
+    // Skip the re-render when nothing changed (focus, visibility changes)
+    const json = JSON.stringify(listing.map(({ modified, ...rest }) => rest))
+    if (json === lastListing) return
+    lastListing = json
+    items = listing
     render()
 }
 
@@ -244,6 +263,7 @@ const removeItem = async item => {
     if (!ok) return
     await api.deleteData(item.key)
     coverURLs.delete(item.key)
+    loadedCovers.delete(item.key)
     refresh()
 }
 
@@ -384,6 +404,7 @@ if (isAndroid) {
     android.setVolumeKeys(false)
     android.setKeepScreenOn(false)
     android.setImmersive(false)
+    android.setBrightness(-1)
     syncSystemBars()
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncSystemBars)
     const openPending = async () => {

@@ -248,6 +248,19 @@ fn library_files_path(app: AppHandle) -> Result<String, String> {
     Ok(library_files_dir(&app)?.to_string_lossy().into_owned())
 }
 
+// Scratch space for picked files that are read once (e.g. annotation imports)
+#[tauri::command]
+fn temp_files_path(app: AppHandle) -> Result<String, String> {
+    let dir = sub_dir(&app, "tmp")?;
+    // keep it from growing: old leftovers are not needed
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 // Remove a copied book file, but never anything outside our own folder
 fn remove_library_copy(app: &AppHandle, path: &str) {
     let Ok(dir) = library_files_dir(app) else { return };
@@ -398,6 +411,7 @@ pub fn run() {
             settings_set,
             library_list,
             library_files_path,
+            temp_files_path,
             cover_set,
             cover_get,
             write_text_file,
