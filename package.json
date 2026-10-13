@@ -1,6 +1,6 @@
 {
   "name": "neo-foliate",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Read e-books in style — a macOS, Windows and Android port of Foliate",
   "author": "John Factotum (original Foliate); Neo Foliate contributors (port)",
