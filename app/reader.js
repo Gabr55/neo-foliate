@@ -519,27 +519,27 @@ class Reader {
         const locText = (a, b) => t('Loc %s of %s', a, b)
         const pageText = label => this.pageTotal
             ? t('Page %s of %s', label, this.pageTotal) : t('Page %s', label)
-        // Margins: book title on top, chapter and position at the bottom
-        // ("Глава 1 · 5 / 51"); two-page spreads show both pages' positions
+        // Margins: chapter on top (book title too on spreads), position as
+        // plain numbers at the bottom ("5 / 51")
         const chapter = tocItem?.label ?? ''
         const title = formatLanguageMap(this.book.metadata?.title)
         const numbers = (a, b) => b ? `${a} / ${b}` : `${a}`
         if (heads?.length) {
-            heads[0].innerText = title
-            if (heads.length > 1) heads.at(-1).innerText = chapter
+            heads.at(-1).innerText = chapter
+            if (heads.length > 1) heads[0].innerText = title
         }
         if (feet?.length && location) {
             const { current, next, total } = location
-            const position = pageItem ? numbers(pageItem.label, this.pageTotal) : numbers(current + 1, total)
-            if (feet.length === 1) feet[0].innerText = [chapter, position].filter(Boolean).join(' · ')
-            else if (pageItem) {
-                feet[0].innerText = chapter
-                feet.at(-1).innerText = position
+            if (pageItem) {
+                feet.at(-1).innerText = numbers(pageItem.label, this.pageTotal)
+                if (feet.length > 1) feet[0].innerText = numbers(current + 1, total)
             } else {
-                const r = 1 - 1 / feet.length
-                const end = Math.floor((1 - r) * current + r * next)
                 feet[0].innerText = numbers(current + 1, total)
-                feet.at(-1).innerText = numbers(end + 1, total)
+                if (feet.length > 1) {
+                    const r = 1 - 1 / feet.length
+                    const end = Math.floor((1 - r) * current + r * next)
+                    feet.at(-1).innerText = numbers(end + 1, total)
+                }
             }
         }
 
