@@ -116,10 +116,12 @@ fn data_set(app: AppHandle, key: String, value: Value) -> Result<(), String> {
 fn data_delete(app: AppHandle, key: String) -> Result<(), String> {
     let _ = fs::remove_file(book_path(&app, &key)?);
     let _ = fs::remove_file(cover_path(&app, &key)?);
-    let uris: Vec<_> = read_uris(&app)?
+    let (removed, uris): (Vec<_>, Vec<_>) = read_uris(&app)?
         .into_iter()
-        .filter(|(k, _)| k != &key)
-        .collect();
+        .partition(|(k, _)| k == &key);
+    for (_, path) in removed {
+        remove_library_copy(&app, &path);
+    }
     write_uris(&app, &uris)?;
     let _ = app.emit("library-changed", &key);
     Ok(())
@@ -145,10 +147,15 @@ fn settings_set(app: AppHandle, value: Value, source: String) -> Result<(), Stri
 
 #[tauri::command]
 fn uri_set(app: AppHandle, key: String, path: String) -> Result<(), String> {
-    let mut uris: Vec<_> = read_uris(&app)?
+    let (old, mut uris): (Vec<_>, Vec<_>) = read_uris(&app)?
         .into_iter()
-        .filter(|(k, _)| k != &key)
-        .collect();
+        .partition(|(k, _)| k == &key);
+    // A re-imported book replaces its previous copy
+    for (_, old_path) in old {
+        if old_path != path {
+            remove_library_copy(&app, &old_path);
+        }
+    }
     uris.push((key, path));
     write_uris(&app, &uris)
 }
@@ -200,10 +207,24 @@ fn cover_set(app: AppHandle, request: Request<'_>) -> Result<(), String> {
         .and_then(|v| v.to_str().ok())
         .ok_or("missing key")?;
     let key = urlencoding::decode(key).map_err(err)?.into_owned();
-    let InvokeBody::Raw(bytes) = request.body() else {
-        return Err("expected raw body".into());
+    // Desktop sends raw bytes; Android's IPC delivers them as JSON instead
+    let bytes: Vec<u8> = match request.body() {
+        InvokeBody::Raw(bytes) => bytes.clone(),
+        InvokeBody::Json(Value::Array(items)) => items
+            .iter()
+            .map(|v| v.as_u64().unwrap_or(0) as u8)
+            .collect(),
+        InvokeBody::Json(Value::Object(map)) => {
+            let mut items: Vec<(usize, u8)> = map
+                .iter()
+                .filter_map(|(k, v)| Some((k.parse().ok()?, v.as_u64()? as u8)))
+                .collect();
+            items.sort_unstable_by_key(|(i, _)| *i);
+            items.into_iter().map(|(_, b)| b).collect()
+        }
+        _ => return Err("expected image bytes".into()),
     };
-    write_atomic(&cover_path(&app, &key)?, bytes)
+    write_atomic(&cover_path(&app, &key)?, &bytes)
 }
 
 #[tauri::command]
@@ -216,23 +237,60 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(err)
 }
 
+// Books imported on mobile are copied here, since Android only hands out
+// content URIs that may stop working later
+fn library_files_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    sub_dir(app, "library-files")
+}
+
+#[tauri::command]
+fn library_files_path(app: AppHandle) -> Result<String, String> {
+    Ok(library_files_dir(&app)?.to_string_lossy().into_owned())
+}
+
+// Remove a copied book file, but never anything outside our own folder
+fn remove_library_copy(app: &AppHandle, path: &str) {
+    let Ok(dir) = library_files_dir(app) else { return };
+    let (Ok(dir), Ok(file)) = (dir.canonicalize(), Path::new(path).canonicalize()) else {
+        return;
+    };
+    if file.starts_with(&dir) {
+        let _ = fs::remove_file(file);
+    }
+}
+
 #[tauri::command]
 fn open_reader(app: AppHandle, path: String) -> Result<(), String> {
-    open_reader_window(&app, &path)
+    #[cfg(desktop)]
+    return open_reader_window(&app, &path);
+    #[cfg(mobile)]
+    {
+        let _ = (app, path);
+        Err("the reader opens in the same window on mobile".into())
+    }
 }
 
 #[tauri::command]
 fn show_library(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
-        let _ = win.unminimize();
-        win.show().map_err(err)?;
-        return win.set_focus().map_err(err);
+        #[cfg(desktop)]
+        {
+            let _ = win.unminimize();
+            win.show().map_err(err)?;
+            win.set_focus().map_err(err)?;
+        }
+        let _ = win;
+        return Ok(());
     }
-    let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::App("index.html".into()))
-        .title("Neo Foliate")
-        .inner_size(1000.0, 700.0)
-        .min_inner_size(360.0, 300.0);
-    with_platform_chrome(builder).build().map_err(err)?;
+    let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::App("index.html".into()));
+    #[cfg(desktop)]
+    let builder = with_platform_chrome(
+        builder
+            .title("Neo Foliate")
+            .inner_size(1000.0, 700.0)
+            .min_inner_size(360.0, 300.0),
+    );
+    builder.build().map_err(err)?;
     Ok(())
 }
 
@@ -245,13 +303,14 @@ fn with_platform_chrome<'a, R: tauri::Runtime, M: Manager<R>>(
         .hidden_title(true)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(desktop, not(target_os = "macos")))]
 fn with_platform_chrome<'a, R: tauri::Runtime, M: Manager<R>>(
     builder: WebviewWindowBuilder<'a, R, M>,
 ) -> WebviewWindowBuilder<'a, R, M> {
     builder
 }
 
+#[cfg(desktop)]
 fn open_reader_window(app: &AppHandle, path: &str) -> Result<(), String> {
     // One window per file: focus it if it is already open
     let hash = Md5::digest(path.as_bytes());
@@ -276,6 +335,7 @@ fn open_reader_window(app: &AppHandle, path: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn open_paths_from_args(app: &AppHandle, args: &[String], cwd: Option<&str>) {
     for arg in args.iter().skip(1) {
         if arg.starts_with('-') {
@@ -309,8 +369,12 @@ pub fn run() {
         }));
     }
 
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_window_state::Builder::new().build());
+    }
+
     let app = builder
-        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -323,6 +387,7 @@ pub fn run() {
             settings_get,
             settings_set,
             library_list,
+            library_files_path,
             cover_set,
             cover_get,
             write_text_file,
@@ -332,8 +397,11 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             show_library(handle.clone())?;
-            let args: Vec<String> = std::env::args().collect();
-            open_paths_from_args(&handle, &args, None);
+            #[cfg(desktop)]
+            {
+                let args: Vec<String> = std::env::args().collect();
+                open_paths_from_args(&handle, &args, None);
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

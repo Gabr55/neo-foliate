@@ -1,10 +1,14 @@
 // Shared helpers for the library and reader windows
 
+import { isAndroid, android } from './android.js'
+
 const tauri = globalThis.__TAURI__
 const { invoke } = tauri.core
 
-export const isMac = /Mac/.test(navigator.platform)
+export const isMobile = isAndroid || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+export const isMac = !isMobile && /Mac/.test(navigator.platform)
 document.documentElement.classList.toggle('mac', isMac)
+document.documentElement.classList.toggle('mobile', isMobile)
 
 // --- Backend ---------------------------------------------------------------
 
@@ -23,9 +27,19 @@ export const api = {
         const buf = new Uint8Array(await invoke('cover_get', { key }))
         return buf.length ? new Blob([buf]) : null
     },
-    writeTextFile: (path, contents) => invoke('write_text_file', { path, contents }),
-    openReader: path => invoke('open_reader', { path }),
-    showLibrary: () => invoke('show_library'),
+    writeTextFile: (path, contents) => isAndroid && path.startsWith('content:')
+        ? android.writeText(path, contents)
+        : invoke('write_text_file', { path, contents }),
+    // Mobile has a single window: the reader replaces the library page
+    openReader: path => isMobile
+        ? location.assign(`reader.html?path=${encodeURIComponent(path)}`)
+        : invoke('open_reader', { path }),
+    showLibrary: () => {
+        if (!isMobile) return invoke('show_library')
+        if (/index\.html|\/$/.test(document.referrer) && history.length > 1) history.back()
+        else location.replace('index.html')
+    },
+    libraryFilesPath: () => invoke('library_files_path'),
     openURL: url => tauri.opener.openUrl(url),
     revealInFolder: path => tauri.opener.revealItemInDir(path),
     openDialog: opts => tauri.dialog.open(opts),
@@ -38,14 +52,36 @@ export const api = {
 
 export const bookExtensions = ['epub', 'mobi', 'azw', 'azw3', 'kf8', 'fb2', 'fbz', 'cbz', 'pdf', 'zip']
 
+// On Android the picker returns content:// URIs; copy them into the app's
+// own storage so they keep working (and have a real path)
+export const toLocalPaths = async uris => {
+    if (!isAndroid) return uris
+    const dir = await api.libraryFilesPath()
+    const paths = []
+    for (const uri of uris) {
+        if (!uri.startsWith('content:')) {
+            paths.push(uri)
+            continue
+        }
+        try {
+            paths.push(await android.copyToLibrary(uri, dir))
+        } catch (e) {
+            console.error(e)
+        }
+    }
+    return paths
+}
+
 export const pickBooks = async () => {
     const result = await api.openDialog({
         multiple: true,
         directory: false,
-        filters: [{ name: t('E-books'), extensions: bookExtensions }],
+        // Android maps extensions to MIME types, and e-book types are often
+        // unknown there, which would grey the files out
+        filters: isMobile ? undefined : [{ name: t('E-books'), extensions: bookExtensions }],
     })
     if (!result) return []
-    return Array.isArray(result) ? result : [result]
+    return toLocalPaths(Array.isArray(result) ? result : [result])
 }
 
 export const fileName = path => path.split(/[\\/]/).pop()
@@ -167,7 +203,13 @@ const strings = {
         'Reference': 'Примечание',
         'Go to Reference': 'Перейти к примечанию',
         'More': 'Ещё',
+        'Listen': 'Слушать',
+        'Continue reading': 'Продолжить чтение',
+        'Continue': 'Продолжить',
+        'All books': 'Все книги',
+        '%s left in chapter': 'До конца главы: %s',
         'Show Library': 'Показать библиотеку',
+        'Volume keys turn pages': 'Листать кнопками громкости',
         'Loc %s of %s': 'Поз. %s из %s',
         'Page %s of %s': 'Стр. %s из %s',
         'Page %s': 'Стр. %s',
@@ -199,6 +241,10 @@ const strings = {
         'No annotations to export': 'Нет заметок для экспорта',
         'Image': 'Изображение',
         'Speech is not available': 'Синтез речи недоступен',
+        'No voice for the book’s language': 'Нет голоса для языка книги',
+        'Install a voice for this language in the system speech settings.': 'Установите голос для этого языка в системных настройках синтеза речи.',
+        'Open Settings': 'Открыть настройки',
+        'Tap + to add books': 'Нажмите +, чтобы добавить книги',
     },
 }
 
@@ -496,19 +542,85 @@ export const placePopover = (popover, anchor, { prefer = 'below', gap = 6 } = {}
     popover.style.top = `${Math.max(8, top)}px`
 }
 
+// --- Back button (mobile) ---------------------------------------------------
+// Each open sheet, panel or dialog pushes a history entry, so the system back
+// button closes it instead of leaving the page
+
+const overlays = []
+let skipPop = 0
+
+export const pushOverlay = close => {
+    if (!isMobile) return
+    overlays.push(close)
+    history.pushState({ overlay: overlays.length }, '')
+}
+
+export const popOverlay = close => {
+    if (!isMobile) return
+    const i = overlays.lastIndexOf(close)
+    if (i < 0) return
+    overlays.splice(i, 1)
+    skipPop++
+    history.back()
+}
+
+window.addEventListener('popstate', () => {
+    if (skipPop) {
+        skipPop--
+        return
+    }
+    overlays.pop()?.()
+})
+
+// Dialogs opened with showModal() join the stack too
+export const showDialog = dialog => {
+    dialog.showModal()
+    const close = () => dialog.close()
+    pushOverlay(close)
+    dialog.addEventListener('close', () => popOverlay(close), { once: true })
+}
+
+// --- Popovers ----------------------------------------------------------------
+
+let backdrop = null
+const getBackdrop = () => {
+    if (backdrop) return backdrop
+    backdrop = document.createElement('div')
+    backdrop.className = 'sheet-backdrop'
+    backdrop.hidden = true
+    backdrop.addEventListener('click', () => closePopover())
+    document.body.append(backdrop)
+    return backdrop
+}
+
 let openPopover = null
+const closeOpenPopover = () => closePopover()
 export const closePopover = () => {
     if (!openPopover) return
     const p = openPopover
     openPopover = null
     p.hidden = true
+    if (backdrop) backdrop.hidden = true
+    popOverlay(closeOpenPopover)
     p.dispatchEvent(new Event('popover-close'))
 }
 
 export const showPopover = (popover, anchor, opts) => {
-    if (openPopover && openPopover !== popover) closePopover()
+    // Switching from one popover to another keeps the same history entry
+    const hadEntry = !!openPopover
+    if (openPopover && openPopover !== popover) {
+        openPopover.hidden = true
+        openPopover.dispatchEvent(new Event('popover-close'))
+    }
     popover.hidden = false
     openPopover = popover
+    if (isMobile) {
+        // Popovers become bottom sheets on phones
+        popover.classList.add('sheet')
+        getBackdrop().hidden = popover.classList.contains('no-backdrop')
+        if (!hadEntry) pushOverlay(closeOpenPopover)
+        return
+    }
     placePopover(popover, anchor, opts)
 }
 
@@ -526,4 +638,6 @@ window.addEventListener('blur', () => {
     if (document.activeElement?.tagName === 'FOLIATE-VIEW') closePopover()
 })
 
-window.addEventListener('resize', () => closePopover())
+window.addEventListener('resize', () => {
+    if (!isMobile) closePopover()
+})

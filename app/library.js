@@ -1,17 +1,20 @@
 import {
-    api, t, el, icon, translateDOM, renderIcons, pickBooks, loadFile, fileName,
+    api, t, el, icon, translateDOM, renderIcons, pickBooks, loadFile, fileName, isMobile, showDialog,
+    pushOverlay, popOverlay,
     formatLanguageMap, formatAuthors, progressFraction, percentFormat, locale, debounce,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
 } from './common.js'
 import { makeBook } from './foliate-js/view.js'
 import { ensureIdentifier, registerBook } from './bookdata.js'
 import { showBookInfo } from './info.js'
+import { isAndroid, android, onAndroid } from './android.js'
 
 const $ = document.querySelector.bind(document)
 await initPrefs()
 applyColorScheme(prefs.colorScheme)
 translateDOM()
 renderIcons()
+if (isMobile) $('#empty p').textContent = t('Tap + to add books')
 
 const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' })
 let items = []
@@ -101,8 +104,11 @@ const renderItem = item => {
         class: 'book' + (item.exists ? '' : ' missing'),
         role: 'listitem',
         tabIndex: 0,
-        title: item.path ?? '',
-        onclick: () => openItem(item),
+        title: isMobile ? '' : item.path ?? '',
+        onclick: () => {
+            if (elem.dataset.longPressed) return delete elem.dataset.longPressed
+            openItem(item)
+        },
         onkeydown: e => {
             if (e.key === 'Enter') openItem(item)
             if (e.key === 'Delete' || e.key === 'Backspace') removeItem(item)
@@ -129,7 +135,57 @@ const renderItem = item => {
             showBookMenu(item, e.currentTarget.getBoundingClientRect())
         },
     }, icon('more')))
+    if (isMobile) addLongPress(elem, () => showBookMenu(item, elem.getBoundingClientRect()))
     return elem
+}
+
+// Touch and hold opens the book menu (there is no right click on phones)
+const addLongPress = (elem, f) => {
+    let timer, start
+    const cancel = () => {
+        clearTimeout(timer)
+        elem.classList.remove('pressed')
+    }
+    elem.addEventListener('pointerdown', e => {
+        start = { x: e.clientX, y: e.clientY }
+        elem.classList.add('pressed')
+        timer = setTimeout(() => {
+            elem.classList.remove('pressed')
+            elem.dataset.longPressed = '1'
+            navigator.vibrate?.(15)
+            f()
+        }, 450)
+    })
+    elem.addEventListener('pointermove', e => {
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel()
+    })
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave']) elem.addEventListener(type, cancel)
+    elem.addEventListener('contextmenu', e => e.preventDefault())
+}
+
+// Phones: the book in progress gets a card at the top, as in Books or Play Books
+const renderContinue = (query, count) => {
+    const box = $('#continue')
+    const heading = $('#books-heading')
+    const item = !isMobile || query ? null : items
+        .filter(i => i.exists && i.data.lastOpened && (progressFraction(i.data.progress) ?? 1) < 1)
+        .sort(sorters.recent)[0]
+    box.hidden = heading.hidden = !item
+    if (!item) return
+    const frac = progressFraction(item.data.progress) ?? 0
+    heading.textContent = `${t('All books')} · ${count}`
+    box.replaceChildren(
+        el('div', { class: 'continue-label' }, t('Continue reading')),
+        el('div', { class: 'continue-card', onclick: () => openItem(item) },
+            makeCover(item),
+            el('div', { class: 'continue-text' },
+                el('div', { class: 'book-title' }, getTitle(item)),
+                el('div', { class: 'book-author' }, getAuthor(item) || t('Unknown Author')),
+                el('div', { class: 'book-progress' },
+                    el('div', { class: 'progress-bar' },
+                        el('div', { class: 'progress-fill', style: `width: ${frac * 100}%` })),
+                    el('span', { class: 'progress-label' }, percentFormat.format(frac))),
+                el('button', { class: 'suggested' }, t('Continue')))))
 }
 
 const render = () => {
@@ -138,6 +194,7 @@ const render = () => {
     const books = $('#books')
     books.className = prefs.libraryView === 'list' ? 'list' : 'grid'
     books.replaceChildren(...list.map(renderItem))
+    renderContinue(query, list.length)
     $('#empty').hidden = items.length > 0
     $('#no-results').hidden = !(items.length > 0 && list.length === 0)
     books.hidden = list.length === 0
@@ -229,8 +286,30 @@ const importBooks = async paths => {
 const addBooks = async () => importBooks(await pickBooks())
 
 $('#add-button').addEventListener('click', addBooks)
+$('#fab').addEventListener('click', addBooks)
 $('#empty-add').addEventListener('click', addBooks)
 $('#search').addEventListener('input', debounce(render, 120))
+
+// Phones: search hides behind an icon, like most mobile apps
+const header = document.querySelector('.headerbar')
+const closeSearch = () => {
+    header.classList.remove('searching')
+    $('#search-toggle').replaceChildren(icon('search'))
+    if ($('#search').value) {
+        $('#search').value = ''
+        render()
+    }
+}
+$('#search-toggle').addEventListener('click', () => {
+    if (header.classList.contains('searching')) {
+        popOverlay(closeSearch)
+        return closeSearch()
+    }
+    header.classList.add('searching')
+    $('#search-toggle').replaceChildren(icon('close'))
+    $('#search').focus()
+    pushOverlay(closeSearch)
+})
 
 $('#view-button').addEventListener('click', e => {
     const menu = $('#view-menu')
@@ -247,6 +326,7 @@ $('#view-menu').addEventListener('click', e => {
     if (scheme) {
         prefs.colorScheme = scheme
         applyColorScheme(scheme)
+        if (isAndroid) syncSystemBars()
     }
     if (button.id === 'about-button') {
         closePopover()
@@ -264,12 +344,17 @@ const showAbout = async () => {
         e.preventDefault()
         api.openURL(a.href)
     }
-    dialog.showModal()
+    showDialog(dialog)
 }
 
 // Keep the preferred color scheme in sync with reader windows
+const isDark = () => prefs.colorScheme === 'dark'
+    || (prefs.colorScheme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+const syncSystemBars = () => android.setSystemBars(!isDark())
+
 onPrefsChanged(() => {
     applyColorScheme(prefs.colorScheme)
+    syncSystemBars()
     render()
 })
 
@@ -285,8 +370,7 @@ document.addEventListener('keydown', e => {
 })
 
 // Native file drag and drop
-const webview = globalThis.__TAURI__.webview.getCurrentWebview()
-webview.onDragDropEvent(({ payload }) => {
+if (!isMobile) globalThis.__TAURI__.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {
     if (payload.type === 'enter' || payload.type === 'over') $('#drop-overlay').hidden = false
     else if (payload.type === 'leave') $('#drop-overlay').hidden = true
     else if (payload.type === 'drop') {
@@ -294,6 +378,21 @@ webview.onDragDropEvent(({ payload }) => {
         importBooks(payload.paths)
     }
 })
+
+// Books opened with the app from other apps ("Open with…", "Share")
+if (isAndroid) {
+    android.setVolumeKeys(false)
+    android.setKeepScreenOn(false)
+    android.setImmersive(false)
+    syncSystemBars()
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncSystemBars)
+    const openPending = async () => {
+        const paths = await android.takePendingFiles(await api.libraryFilesPath()).catch(() => [])
+        if (paths?.length) importBooks(paths)
+    }
+    onAndroid('pending-files', openPending)
+    openPending()
+}
 
 api.listen('library-changed', debounce(refresh, 300))
 window.addEventListener('focus', refresh)

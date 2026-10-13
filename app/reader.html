@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Neo Foliate</title>
 <!-- Use the patched paginator (smoother, interruptible page turns) -->
 <script type="importmap">{ "imports": { "./foliate-js/paginator.js": "./engine/paginator.js" } }</script>
 <link rel="stylesheet" href="common.css">
 <link rel="stylesheet" href="info.css">
 <link rel="stylesheet" href="reader.css">
+<link rel="stylesheet" href="mobile.css">
 </head>
 <body>
 <div id="app" class="sidebar-collapsed">
@@ -62,16 +63,21 @@
         </section>
     </aside>
 
+    <div id="sidebar-backdrop"></div>
     <div id="content">
         <header id="headerbar" class="headerbar leading" data-tauri-drag-region>
-            <button id="sidebar-button" class="icon-only" data-icon="sidebar" data-i18n-title="Sidebar"></button>
-            <button id="back-button" class="icon-only" data-icon="back" data-i18n-title="Back" disabled></button>
-            <button id="forward-button" class="icon-only" data-icon="forward" data-i18n-title="Forward" disabled></button>
-            <span id="title" class="title" data-tauri-drag-region></span>
-            <button id="search-button" class="icon-only" data-icon="search" data-i18n-title="Find in book"></button>
+            <button id="library-button" class="icon-only mobile-only" data-icon="back" data-i18n-title="Library"></button>
+            <button id="sidebar-button" class="icon-only desktop-only" data-icon="sidebar" data-i18n-title="Sidebar"></button>
+            <button id="back-button" class="icon-only desktop-only" data-icon="back" data-i18n-title="Back" disabled></button>
+            <button id="forward-button" class="icon-only desktop-only" data-icon="forward" data-i18n-title="Forward" disabled></button>
+            <div class="title-block" data-tauri-drag-region>
+                <span id="title" class="title" data-tauri-drag-region></span>
+                <span id="subtitle" class="mobile-only"></span>
+            </div>
+            <button id="search-button" class="icon-only desktop-only" data-icon="search" data-i18n-title="Find in book"></button>
             <button id="bookmark-button" class="icon-only" data-icon="bookmark" data-i18n-title="Add Bookmark"></button>
-            <button id="tts-button" class="icon-only" data-icon="speaker" data-i18n-title="Read aloud"></button>
-            <button id="view-button" class="icon-only" data-popover-toggle data-icon="text" data-i18n-title="View"></button>
+            <button id="tts-button" class="icon-only desktop-only" data-icon="speaker" data-i18n-title="Read aloud"></button>
+            <button id="view-button" class="icon-only desktop-only" data-popover-toggle data-icon="text" data-i18n-title="View"></button>
             <button id="more-button" class="icon-only" data-popover-toggle data-icon="more" data-i18n-title="More"></button>
         </header>
 
@@ -95,14 +101,23 @@
         </div>
 
         <footer id="navbar">
-            <button id="prev-button" class="icon-only" data-icon="back" data-i18n-title="Previous"></button>
-            <div class="progress">
-                <input id="progress-slider" type="range" min="0" max="1" step="any" value="0" list="tick-marks">
-                <datalist id="tick-marks"></datalist>
+            <div class="nav-row">
+                <button id="prev-button" class="icon-only desktop-only" data-icon="back" data-i18n-title="Previous"></button>
+                <div class="progress">
+                    <input id="progress-slider" type="range" min="0" max="1" step="any" value="0" list="tick-marks">
+                    <datalist id="tick-marks"></datalist>
+                </div>
+                <span id="location-label"></span>
+                <span id="percent-label"></span>
+                <button id="next-button" class="icon-only desktop-only" data-icon="forward" data-i18n-title="Next"></button>
             </div>
-            <span id="location-label"></span>
-            <span id="percent-label"></span>
-            <button id="next-button" class="icon-only" data-icon="forward" data-i18n-title="Next"></button>
+            <!-- Phones: labelled tools, like Books and Play Books -->
+            <nav class="mobile-tools mobile-only">
+                <button id="toc-button" data-icon="list"><span data-i18n="Contents"></span></button>
+                <button id="search-button-bottom" data-icon="search"><span data-i18n="Search"></span></button>
+                <button id="view-button-bottom" data-popover-toggle data-icon="text"><span data-i18n="Appearance"></span></button>
+                <button id="tts-button-bottom" data-icon="speaker"><span data-i18n="Listen"></span></button>
+            </nav>
         </footer>
     </div>
 </div>
@@ -172,21 +187,23 @@
         </div>
     </div>
     <label class="row"><span data-i18n="Invert in dark mode"></span><input type="checkbox" id="invert"></label>
+    <label class="row android-only"><span data-i18n="Volume keys turn pages"></span><input type="checkbox" id="volume-keys"></label>
 </div>
 
 <div id="more-menu" class="popover menu" hidden>
-    <button data-action="library" data-icon="library"><span data-i18n="Show Library"></span></button>
+    <button data-action="library" data-icon="library" class="desktop-only"><span data-i18n="Show Library"></span></button>
+    <button data-action="tts" data-icon="speaker" class="mobile-only"><span data-i18n="Read aloud"></span></button>
     <button data-action="info" data-icon="info"><span data-i18n="Book Info"></span></button>
     <hr>
     <button data-action="export" data-icon="export"><span data-i18n="Export Annotations…"></span></button>
     <button data-action="import" data-icon="import"><span data-i18n="Import Annotations…"></span></button>
     <hr>
     <button data-action="print" data-icon="print"><span data-i18n="Print"></span></button>
-    <button data-action="fullscreen" data-icon="fullscreen"><span data-i18n="Fullscreen"></span></button>
+    <button data-action="fullscreen" data-icon="fullscreen" class="desktop-only"><span data-i18n="Fullscreen"></span></button>
 </div>
 
 <!-- Selection -->
-<div id="selection-menu" class="popover selection-menu" hidden>
+<div id="selection-menu" class="popover selection-menu no-backdrop" hidden>
     <div class="selection-actions">
         <button data-action="copy" data-icon="copy" data-i18n-title="Copy"></button>
         <button data-action="highlight" data-icon="highlight" data-i18n-title="Highlight"></button>

@@ -1,0 +1,142 @@
+/* Phones and tablets. Loaded by every page; rules only apply under .mobile */
+
+:root {
+    /* Android overrides these from the native window insets (android.js) */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --bar-height: 56px;
+    --nav-height: 104px;
+}
+
+.mobile-only, .android-only {
+    display: none !important;
+}
+
+.mobile .mobile-only, .android .android-only {
+    display: revert !important;
+}
+
+.mobile button.mobile-only, .android button.android-only {
+    display: inline-flex !important;
+}
+
+.mobile .mobile-only[hidden], .android .android-only[hidden] {
+    display: none !important;
+}
+
+.mobile .desktop-only {
+    display: none !important;
+}
+
+.mobile body {
+    font-size: 15px;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+}
+
+.mobile button {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+.mobile button.icon-only {
+    width: 44px;
+}
+
+.mobile .icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.mobile input[type="search"], .mobile input[type="text"], .mobile select, .mobile textarea {
+    min-height: 40px;
+    font-size: 16px;
+}
+
+.mobile .headerbar, .mobile .headerbar.leading {
+    height: calc(var(--bar-height) + var(--safe-top));
+    padding: var(--safe-top) calc(4px + var(--safe-right)) 0 calc(4px + var(--safe-left));
+}
+
+/* Bottom sheets (popovers on phones) */
+.mobile .popover.sheet {
+    position: fixed;
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: 82vh;
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    padding: 6px calc(12px + var(--safe-right)) calc(14px + var(--safe-bottom)) calc(12px + var(--safe-left));
+    animation: sheet-in .24s cubic-bezier(.2, .8, .2, 1);
+    overscroll-behavior: contain;
+}
+
+.mobile .popover.sheet::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 4px auto 10px;
+    border-radius: 2px;
+    background: var(--active);
+}
+
+.mobile .popover.sheet.no-backdrop::before {
+    display: none;
+}
+
+@media (min-width: 600px) {
+    /* Tablets: centered sheet instead of full width */
+    .mobile .popover.sheet {
+        left: 50% !important;
+        right: auto;
+        width: 520px;
+        transform: translateX(-50%);
+        animation-name: sheet-in-centered;
+    }
+}
+
+@keyframes sheet-in {
+    from { transform: translateY(100%); }
+}
+
+@keyframes sheet-in-centered {
+    from { transform: translate(-50%, 100%); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+}
+
+.sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: rgba(0, 0, 0, .35);
+    animation: fade-in .2s ease;
+}
+
+.mobile .menu button {
+    min-height: 50px;
+    font-size: 16px;
+    gap: 14px;
+}
+
+.mobile .menu hr {
+    margin: 6px 0;
+}
+
+.mobile dialog {
+    max-width: calc(100vw - 24px);
+}
+
+.mobile .toast {
+    bottom: calc(88px + var(--safe-bottom));
+}

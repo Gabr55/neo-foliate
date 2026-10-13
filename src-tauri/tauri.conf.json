@@ -37,7 +37,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Read e-books in style",
-    "longDescription": "A macOS and Windows port of Foliate, the e-book reader by John Factotum. Supports EPUB, MOBI, KF8 (AZW3), FB2, CBZ and PDF.",
+    "longDescription": "A macOS, Windows and Android port of Foliate, the e-book reader by John Factotum. Supports EPUB, MOBI, KF8 (AZW3), FB2, CBZ and PDF.",
     "copyright": "Foliate © John Factotum. Neo Foliate port contributors. GPL-3.0-or-later.",
     "license": "GPL-3.0-or-later",
     "icon": [
@@ -102,6 +102,9 @@
         ],
         "displayLanguageSelector": false
       }
+    },
+    "android": {
+      "minSdkVersion": 26
     }
   }
 }

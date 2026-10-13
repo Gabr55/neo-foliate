@@ -1,23 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the library and reader windows",
-  "windows": [
-    "main",
-    "reader-*"
-  ],
+  "description": "Permissions shared by every platform",
+  "windows": ["main", "reader-*"],
   "permissions": [
     "core:default",
-    "core:window:allow-start-dragging",
-    "core:window:allow-set-title",
-    "core:window:allow-set-fullscreen",
-    "core:window:allow-set-theme",
-    "core:window:allow-destroy",
-    "core:window:allow-is-fullscreen",
-    "core:window:allow-close",
     "dialog:default",
-    "opener:allow-open-url",
-    "opener:allow-reveal-item-in-dir",
-    "window-state:default"
+    "opener:allow-open-url"
   ]
 }

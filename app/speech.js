@@ -1,4 +1,5 @@
 import { prefs } from './common.js'
+import { isAndroid, AndroidSynth } from './android.js'
 
 // Read aloud with the system speech synthesizer (Web Speech API).
 // foliate-js produces SSML with <mark> elements; we turn it into plain text,
@@ -37,7 +38,8 @@ export class Speech {
         this.reader = reader
         this.onState = onState
         this.onError = onError
-        this.synth = globalThis.speechSynthesis
+        // Android's WebView has no speechSynthesis; use the system TTS engine
+        this.synth = isAndroid ? new AndroidSynth() : globalThis.speechSynthesis
         if (!this.synth) return
         this.#rate = prefs.ttsRate ?? 1
         this.#loadVoices()
@@ -70,12 +72,22 @@ export class Speech {
 
     setVoice(uri) {
         this.#voice = this.#voices.find(v => v.voiceURI === uri) ?? null
-        if (this.state === 'playing') this.#restart()
+        if (this.state === 'playing') this.#scheduleRestart()
     }
 
     setRate(rate) {
         this.#rate = rate
-        if (this.state === 'playing') this.#restart()
+        if (this.state === 'playing') this.#scheduleRestart()
+    }
+
+    // Changing rate or voice restarts the current sentence once things settle,
+    // instead of on every step of the slider
+    #restartTimer = null
+    #scheduleRestart() {
+        clearTimeout(this.#restartTimer)
+        this.#restartTimer = setTimeout(() => {
+            if (this.state === 'playing') this.#restart()
+        }, 250)
     }
 
     #setState(state) {
@@ -88,14 +100,18 @@ export class Speech {
         return this.reader.view.tts
     }
 
-    #speak(ssml) {
+    #speak(ssml, retried = false) {
         const generation = ++this.#generation
+        // WebKit may end an utterance spoken right after cancel() at once,
+        // which looked like the end of the block and skipped ahead
+        const wasSpeaking = this.synth.speaking || this.synth.pending
         this.synth.cancel()
         if (!ssml) return this.#nextSection(generation)
         this.#currentSSML = ssml
         const { text, marks, lang } = parseSSML(ssml)
         if (!text.trim()) return this.#onEnd(generation)
-        const utterance = new SpeechSynthesisUtterance(text)
+        const utterance = globalThis.SpeechSynthesisUtterance && !isAndroid
+            ? new SpeechSynthesisUtterance(text) : { text }
         utterance.rate = this.#rate
         if (this.#voice) utterance.voice = this.#voice
         utterance.lang = this.#voice?.lang || lang || this.reader.view?.language?.canonical || ''
@@ -108,7 +124,22 @@ export class Speech {
             }
             if (mark) this.reader.view.tts?.setMark(mark.name)
         }
-        utterance.onend = () => this.#onEnd(generation)
+        let started = 0, spoke = false, requested = 0
+        utterance.onstart = () => started = performance.now()
+        const onboundary = utterance.onboundary
+        utterance.onboundary = e => {
+            spoke = true
+            onboundary(e)
+        }
+        utterance.onend = () => {
+            if (generation !== this.#generation) return
+            // An immediate end without a single word spoken is a glitch,
+            // not the end of the text: say it again instead of moving on
+            // (no real sentence of 20+ characters is over within 150 ms)
+            const early = !spoke && performance.now() - (started || requested) < 150
+            if (early && !retried && text.trim().length > 20) return this.#speak(ssml, true)
+            this.#onEnd(generation)
+        }
         utterance.onerror = e => {
             if (generation !== this.#generation) return
             if (e.error === 'interrupted' || e.error === 'canceled') return
@@ -118,8 +149,14 @@ export class Speech {
         }
         // Mark the first word right away; some engines skip early boundaries
         if (marks[0]) this.reader.view.tts?.setMark(marks[0].name)
-        this.synth.speak(utterance)
         this.#setState('playing')
+        const speakNow = () => {
+            if (generation !== this.#generation) return
+            requested = performance.now()
+            this.synth.speak(utterance)
+        }
+        if (wasSpeaking || retried) setTimeout(speakNow, 80)
+        else speakNow()
     }
 
     #onEnd(generation) {

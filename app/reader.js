@@ -1,5 +1,6 @@
 import {
-    api, t, el, icon, translateDOM, renderIcons, loadFile, fileName, isMac,
+    api, t, el, icon, translateDOM, renderIcons, loadFile, fileName, isMac, isMobile,
+    showDialog, pushOverlay, popOverlay,
     formatLanguageMap, formatAuthors, percentFormat, debounce, themes, invertColor,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
 } from './common.js'
@@ -11,6 +12,7 @@ import * as CFI from './foliate-js/epubcfi.js'
 import { ensureIdentifier, plainMetadata, saveCover } from './bookdata.js'
 import { showBookInfo } from './info.js'
 import { Speech } from './speech.js'
+import { isAndroid, android, onAndroid } from './android.js'
 
 const $ = document.querySelector.bind(document)
 const $$ = s => Array.from(document.querySelectorAll(s))
@@ -20,6 +22,9 @@ const darkQuery = matchMedia('(prefers-color-scheme: dark)')
 
 translateDOM()
 renderIcons()
+// Phones get text labels under the icons, which are easier to discover by touch
+if (isMobile) for (const b of $$('.selection-actions button, .sidebar-tabs button'))
+    b.append(el('span', { class: 'label' }, b.title))
 
 const toast = (() => {
     let timeout
@@ -173,6 +178,13 @@ const getPosition = target => {
 
 const positionToRect = ({ point: { x, y } }) => ({ left: x, right: x, top: y, bottom: y })
 
+const isLightColor = hex => {
+    const n = parseInt(String(hex).replace('#', '').slice(0, 6), 16)
+    if (isNaN(n)) return true
+    const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150
+}
+
 const getSelectionRange = sel => {
     if (!sel?.rangeCount) return
     const range = sel.getRangeAt(0)
@@ -265,6 +277,9 @@ class Reader {
     #currentSelection = null
     #speech = null
     #searchToken = 0
+    #annotationTapAt = 0
+    #chromeVisible = !isMobile
+    #closeSidebar = () => this.toggleSidebar(false)
 
     save = debounce(() => {
         if (this.key) api.setData(this.key, this.data).catch(e => console.error(e))
@@ -370,6 +385,11 @@ class Reader {
         root.setProperty('--book-link', colors.link)
         document.body.classList.toggle('invert', prefs.invert && this.isDark)
         document.body.classList.toggle('dark', this.isDark)
+        if (isAndroid) {
+            android.setSystemBars(isLightColor(getComputedStyle(document.documentElement)
+                .getPropertyValue('--book-bg').trim()))
+            android.setVolumeKeys(prefs.volumeKeys !== false)
+        }
 
         const renderer = this.view?.renderer
         if (renderer) {
@@ -378,7 +398,7 @@ class Reader {
             } else {
                 renderer.setAttribute('flow', prefs.flow)
                 renderer.setAttribute('gap', prefs.gap * 100 + '%')
-                renderer.setAttribute('margin', '48px')
+                renderer.setAttribute('margin', isMobile ? '36px' : '48px')
                 renderer.setAttribute('max-inline-size', prefs.maxInlineSize + 'px')
                 renderer.setAttribute('max-block-size', '1440px')
                 renderer.setAttribute('max-column-count', prefs.maxColumnCount)
@@ -429,6 +449,7 @@ class Reader {
         $('#hyphenate').checked = prefs.hyphenate
         $('#animated').checked = prefs.animated
         $('#invert').checked = prefs.invert
+        $('#volume-keys').checked = prefs.volumeKeys !== false
     }
 
     // --- Events from the view ---
@@ -454,6 +475,7 @@ class Reader {
             else draw(Overlayer.highlight, { color })
         })
         view.addEventListener('show-annotation', e => {
+            this.#annotationTapAt = Date.now()
             const { value, range } = e.detail
             const annotation = this.annotations.get(value)
             if (annotation) this.showAnnotationMenu(annotation, getPosition(range))
@@ -506,6 +528,7 @@ class Reader {
         $('#location-label').textContent = pageItem ? pageText(pageItem.label)
             : location ? locText(location.current + 1, location.total) : ''
         if (tocItem?.href) this.#tocView?.setCurrentHref?.(tocItem.href)
+        $('#subtitle').textContent = tocItem?.label ?? ''
 
         this.data.lastLocation = cfi
         if (location) this.data.progress = [location.current, location.total]
@@ -521,22 +544,56 @@ class Reader {
         for (const img of doc.querySelectorAll('img')) img.addEventListener('dblclick', () =>
             fetch(img.src).then(res => res.blob()).then(blobToDataURL).then(url => {
                 $('#image-view').src = url
-                $('#image-dialog').showModal()
+                showDialog($('#image-dialog'))
             }).catch(e => console.error(e)))
 
-        doc.addEventListener('pointerup', () => {
-            // wait for the selection to settle
-            setTimeout(() => {
-                const sel = doc.getSelection()
-                const range = getSelectionRange(sel)
-                if (!range) return
-                const text = sel.toString()
-                if (!text.trim()) return
-                const value = this.view.getCFI(index, range)
-                const lang = getLang(range.commonAncestorContainer)
-                this.showSelectionMenu({ index, range, value, text, lang })
-            }, 10)
-        })
+        const checkSelection = () => {
+            const sel = doc.getSelection()
+            const range = getSelectionRange(sel)
+            if (!range) return
+            const text = sel.toString()
+            if (!text.trim()) return
+            const value = this.view.getCFI(index, range)
+            const lang = getLang(range.commonAncestorContainer)
+            this.showSelectionMenu({ index, range, value, text, lang })
+        }
+        // wait for the selection to settle
+        doc.addEventListener('pointerup', () => setTimeout(checkSelection, 10))
+
+        if (isMobile) {
+            // Touch selection is adjusted with handles that send no pointer
+            // events to the page, so follow the selection itself
+            doc.addEventListener('selectionchange', debounce(checkSelection, 350))
+            doc.addEventListener('click', e => {
+                if (e.defaultPrevented || e.target.closest?.('a[href], button, input, select, textarea')) return
+                if (doc.getSelection()?.toString()) return
+                // map the tap from the (possibly scaled) iframe to the window
+                const frame = doc.defaultView.frameElement
+                const rect = frame.getBoundingClientRect()
+                const scale = rect.width / (frame.offsetWidth || rect.width)
+                const x = rect.left + e.clientX * scale
+                setTimeout(() => this.handleTap(x), 0)
+            })
+        }
+    }
+
+    // Phones: tap the left or right edge to turn pages, the middle for menus
+    handleTap(x) {
+        if (Date.now() - this.#annotationTapAt < 400) return
+        if (document.querySelector('.popover:not([hidden])')) return closePopover()
+        if (this.#chromeVisible) return this.setChrome(false)
+        const w = window.innerWidth
+        if (x < w * 0.28) this.view.goLeft()
+        else if (x > w * 0.72) this.view.goRight()
+        else this.setChrome(true)
+    }
+
+    setChrome(visible) {
+        if (!isMobile) return
+        this.#chromeVisible = visible
+        document.body.classList.toggle('chrome-hidden', !visible)
+        if (isAndroid) android.setImmersive(!visible)
+        if (!visible) closePopover()
     }
 
     // --- Navigation helpers ---
@@ -657,9 +714,17 @@ class Reader {
 
     toggleSidebar(force) {
         const app = $('#app')
-        const collapsed = force != null ? !force : !app.classList.contains('sidebar-collapsed')
+        const wasCollapsed = app.classList.contains('sidebar-collapsed')
+        const collapsed = force != null ? !force : !wasCollapsed
         app.classList.toggle('sidebar-collapsed', collapsed)
         $('#sidebar-button').setAttribute('aria-pressed', !collapsed)
+        if (isMobile) {
+            if (wasCollapsed && !collapsed) {
+                closePopover()
+                pushOverlay(this.#closeSidebar)
+            } else if (!wasCollapsed && collapsed) popOverlay(this.#closeSidebar)
+            return
+        }
         if (window.innerWidth > 760) {
             prefs.sidebarOpen = !collapsed
             savePrefs(prefs)
@@ -745,7 +810,7 @@ class Reader {
             go.hidden = hidden
             go.textContent = t(goLabel)
             dialog.querySelector('header').textContent = t(label)
-            dialog.showModal()
+            showDialog(dialog)
         })
     }
 
@@ -1067,7 +1132,13 @@ class Reader {
                 play.replaceChildren(icon(state === 'playing' ? 'pause' : 'play'))
                 play.title = play.ariaLabel = t(state === 'playing' ? 'Pause' : 'Play')
             },
-            onError: () => toast(t('Speech is not available')),
+            onError: async e => {
+                if (e?.error !== 'language-unavailable') return toast(t('Speech is not available'))
+                const ok = await api.confirm(t('Install a voice for this language in the system speech settings.'), {
+                    title: t('No voice for the book’s language'), okLabel: t('Open Settings'), cancelLabel: t('Cancel'),
+                })
+                if (ok) android.tts.openSettings()
+            },
         })
         return this.#speech
     }
@@ -1092,6 +1163,10 @@ const reader = new Reader()
 globalThis.reader = reader
 
 $('#sidebar-button').addEventListener('click', () => reader.toggleSidebar())
+$('#library-button').addEventListener('click', () => api.showLibrary())
+$('#toc-button').addEventListener('click', () => reader.showPanel('toc'))
+$('#search-button-bottom').addEventListener('click', () => reader.openSearch())
+$('#sidebar-backdrop').addEventListener('click', () => reader.toggleSidebar(false))
 $('#back-button').addEventListener('click', () => reader.view?.history.back())
 $('#forward-button').addEventListener('click', () => reader.view?.history.forward())
 $('#prev-button').addEventListener('click', () => reader.view?.goLeft())
@@ -1104,7 +1179,7 @@ $('#tts-prev').addEventListener('click', () => reader.speech.prev())
 $('#tts-next').addEventListener('click', () => reader.speech.next())
 $('#tts-stop').addEventListener('click', () => reader.speech.stop())
 $('#tts-rate').value = prefs.ttsRate
-$('#tts-rate').addEventListener('input', e => {
+$('#tts-rate').addEventListener('change', e => {
     prefs.ttsRate = parseFloat(e.target.value)
     savePrefs(prefs)
     reader.speech.setRate(prefs.ttsRate)
@@ -1139,6 +1214,11 @@ const togglePopover = (id, button) => {
     showPopover(menu, button.getBoundingClientRect())
 }
 $('#view-button').addEventListener('click', e => togglePopover('#view-menu', e.currentTarget))
+$('#view-button-bottom').addEventListener('click', e => togglePopover('#view-menu', e.currentTarget))
+$('#tts-button-bottom').addEventListener('click', () => {
+    reader.speech.toggle()
+    reader.setChrome(false)
+})
 $('#more-button').addEventListener('click', e => togglePopover('#more-menu', e.currentTarget))
 
 $('#more-menu').addEventListener('click', e => {
@@ -1151,6 +1231,7 @@ $('#more-menu').addEventListener('click', e => {
     else if (action === 'import') reader.importAnnotations()
     else if (action === 'print') window.print()
     else if (action === 'fullscreen') reader.toggleFullscreen()
+    else if (action === 'tts') reader.speech.toggle()
 })
 
 // Printing is not reliable in every system web view; hide it for now
@@ -1189,6 +1270,7 @@ rangePref('#gap', 'gap')
 rangePref('#max-inline-size', 'maxInlineSize')
 for (const key of ['justify', 'hyphenate', 'animated', 'invert'])
     $('#' + key).addEventListener('change', e => reader.setPref(key, e.target.checked))
+$('#volume-keys').addEventListener('change', e => reader.setPref('volumeKeys', e.target.checked))
 
 // Selection and annotation popovers
 $('#selection-menu').addEventListener('click', e => {
@@ -1239,17 +1321,49 @@ document.addEventListener('pointermove', e => {
 onPrefsChanged(() => reader.applyAppearance())
 darkQuery.addEventListener('change', () => reader.applyAppearance())
 
-// Native drag and drop opens dropped books in new windows
-globalThis.__TAURI__.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {
-    if (payload.type === 'drop') for (const path of payload.paths) api.openReader(path)
-})
+if (!isMobile) {
+    // Native drag and drop opens dropped books in new windows
+    globalThis.__TAURI__.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {
+        if (payload.type === 'drop') for (const path of payload.paths) api.openReader(path)
+    })
 
-// Save before the window goes away
-appWindow.onCloseRequested(async () => {
-    reader.stopSpeech()
-    savePrefs.flush()
-    await reader.flush()
-})
+    // Save before the window goes away
+    appWindow.onCloseRequested(async () => {
+        reader.stopSpeech()
+        savePrefs.flush()
+        await reader.flush()
+    })
+} else {
+    // Phones: reading is full screen; tap the middle of the page for menus
+    reader.setChrome(false)
+    // The page is replaced (not closed) when going back to the library
+    window.addEventListener('pagehide', () => {
+        reader.stopSpeech()
+        savePrefs.flush()
+        reader.save.flush()
+        if (isAndroid) {
+            android.setVolumeKeys(false)
+            android.setKeepScreenOn(false)
+            android.setImmersive(false)
+        }
+    })
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) reader.save.flush()
+    })
+}
+
+if (isAndroid) {
+    android.setKeepScreenOn(true)
+    onAndroid('volume', dir => {
+        if (dir === 'down') reader.view?.next()
+        else reader.view?.prev()
+    })
+    // A book opened from another app while reading: switch to it
+    onAndroid('pending-files', async () => {
+        const paths = await android.takePendingFiles(await api.libraryFilesPath()).catch(() => [])
+        if (paths?.[0]) api.openReader(paths[0])
+    })
+}
 
 reader.showPanel('toc', false)
 if (window.innerWidth > 760 && prefs.sidebarOpen) reader.toggleSidebar(true)

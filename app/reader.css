@@ -335,6 +335,7 @@
 }
 
 #headerbar .title {
+    flex: none;
     font-weight: 500;
     opacity: .8;
 }
@@ -343,6 +344,9 @@
     position: relative;
     flex: 1;
     min-height: 0;
+    /* keep the book's own layers below the toolbars */
+    isolation: isolate;
+    z-index: 0;
 }
 
 #viewer > .placeholder {
@@ -379,13 +383,27 @@ foliate-view::part(head), foliate-view::part(foot) {
 /* Navigation bar */
 #navbar {
     display: flex;
+    flex-direction: column;
+    flex: none;
+    border-top: 1px solid;
+    font-size: 12px;
+}
+
+.nav-row {
+    display: flex;
     align-items: center;
     gap: 8px;
     height: 42px;
     padding: 0 8px;
-    flex: none;
-    border-top: 1px solid;
-    font-size: 12px;
+}
+
+.title-block {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    pointer-events: none;
 }
 
 .progress {
@@ -721,4 +739,280 @@ foliate-view::part(head), foliate-view::part(foot) {
     #location-label {
         display: none;
     }
+}
+
+/* Mobile: full-screen reading with overlay toolbars */
+#sidebar-backdrop {
+    display: none;
+}
+
+.mobile #content {
+    position: relative;
+}
+
+.mobile #viewer {
+    position: absolute;
+    top: var(--safe-top);
+    right: var(--safe-right);
+    bottom: var(--safe-bottom);
+    left: var(--safe-left);
+}
+
+.mobile #headerbar, .mobile #navbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    transition: transform .25s cubic-bezier(.2, .8, .2, 1), opacity .2s ease;
+    box-shadow: 0 0 12px rgba(0, 0, 0, .12);
+}
+
+.mobile #headerbar {
+    top: 0;
+}
+
+.mobile #headerbar .title {
+    text-align: start;
+    padding-inline: 4px;
+    font-size: 16px;
+    font-weight: 600;
+    opacity: 1;
+}
+
+.mobile #subtitle {
+    display: block !important;
+    padding-inline: 4px;
+    font-size: 12px;
+    opacity: .6;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mobile #subtitle:empty {
+    display: none !important;
+}
+
+.mobile #navbar {
+    bottom: 0;
+    height: calc(var(--nav-height) + var(--safe-bottom));
+    padding: 4px calc(8px + var(--safe-right)) var(--safe-bottom) calc(8px + var(--safe-left));
+    border-top: 0;
+}
+
+.mobile .nav-row {
+    height: 40px;
+    padding: 0 6px;
+    gap: 12px;
+}
+
+.mobile nav.mobile-tools {
+    display: flex !important;
+    justify-content: space-around;
+}
+
+.mobile .mobile-tools button {
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 56px;
+    padding: 4px 0;
+    border-radius: 12px;
+    font-size: 11px;
+    opacity: .85;
+}
+
+.mobile .mobile-tools button[aria-pressed="true"] {
+    opacity: 1;
+}
+
+.mobile .chrome-hidden #headerbar {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mobile .chrome-hidden #navbar {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mobile #location-label {
+    display: none;
+}
+
+.mobile #progress-slider {
+    height: 32px;
+}
+
+.mobile #tts-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 31;
+    bottom: calc(var(--nav-height) + var(--safe-bottom));
+    padding: 6px calc(8px + var(--safe-right)) 6px calc(8px + var(--safe-left));
+    border-top: 1px solid color-mix(in srgb, var(--book-fg) 12%, transparent);
+    transition: bottom .25s ease;
+}
+
+.mobile .chrome-hidden #tts-bar {
+    bottom: 0;
+    padding-bottom: calc(6px + var(--safe-bottom));
+}
+
+.mobile #tts-voice {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+}
+
+.mobile .tts-rate {
+    flex-basis: 100%;
+    order: 10;
+}
+
+.mobile .tts-rate input {
+    flex: 1;
+}
+
+/* Drawer for contents, annotations, bookmarks and search */
+.mobile #sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: min(88vw, 400px);
+    margin-left: 0;
+    padding-left: var(--safe-left);
+    box-shadow: var(--shadow);
+    transform: none;
+    transition: transform .26s cubic-bezier(.2, .8, .2, 1);
+}
+
+.mobile .sidebar-collapsed #sidebar {
+    margin-left: 0;
+    transform: translateX(-105%);
+    box-shadow: none;
+}
+
+.mobile #app:not(.sidebar-collapsed) #sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: rgba(0, 0, 0, .35);
+    animation: fade-in .2s ease;
+}
+
+.mobile .sidebar-header {
+    justify-content: space-around;
+}
+
+.mobile .panel {
+    padding-bottom: var(--safe-bottom);
+}
+
+.mobile #toc-view a, .mobile #toc-view span {
+    padding: 11px 10px;
+}
+
+.mobile .item {
+    min-height: 48px;
+    padding: 10px;
+}
+
+.mobile .item-remove {
+    opacity: .6;
+}
+
+/* Sheets */
+.mobile .settings {
+    width: auto;
+}
+
+.mobile .settings input[type="range"], .mobile .settings select {
+    width: 55%;
+}
+
+.mobile .selection-menu.sheet {
+    padding-top: 8px;
+}
+
+.mobile .selection-actions {
+    justify-content: space-around;
+}
+
+.mobile .annotation-menu {
+    width: auto;
+}
+
+.mobile .color-button {
+    width: 36px;
+    min-width: 36px;
+}
+
+.mobile #footnote-dialog {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    height: min(62vh, 520px);
+    border-radius: 18px 18px 0 0;
+    padding-bottom: var(--safe-bottom);
+}
+
+@media (min-width: 600px) {
+    .mobile #footnote-dialog {
+        margin: auto;
+        width: 520px;
+        border-radius: 14px;
+    }
+}
+
+.label {
+    display: none;
+}
+
+.mobile .selection-actions {
+    justify-content: flex-start;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.mobile .selection-actions button, .mobile .sidebar-tabs button {
+    flex-direction: column;
+    gap: 3px;
+    width: auto;
+    min-width: 68px;
+    padding: 6px 4px;
+    border-radius: 12px;
+}
+
+.mobile .selection-actions .label, .mobile .sidebar-tabs .label {
+    display: block;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    max-width: 76px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mobile .sidebar-header.headerbar.leading {
+    height: auto;
+    min-height: calc(var(--bar-height) + var(--safe-top));
+    padding-bottom: 6px;
+}
+
+.mobile .sidebar-tabs {
+    flex: 1;
+    justify-content: space-around;
+}
+
+.mobile .sidebar-tabs button {
+    flex: 1;
+    min-width: 0;
 }

@@ -1,5 +1,5 @@
 import {
-    t, el, api, formatLanguageMap, formatAuthors, formatDate, formatLanguage, htmlToText,
+    t, el, api, showDialog, formatLanguageMap, formatAuthors, formatDate, formatLanguage, htmlToText,
 } from './common.js'
 
 const formatList = x => (Array.isArray(x) ? x : [x])
@@ -28,5 +28,5 @@ export const showBookInfo = (dialog, metadata = {}, coverURL) => {
         e.preventDefault()
         api.openURL(a.href)
     }
-    dialog.showModal()
+    showDialog(dialog)
 }

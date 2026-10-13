@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Neo Foliate</title>
 <link rel="stylesheet" href="common.css">
 <link rel="stylesheet" href="info.css">
 <link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="mobile.css">
 </head>
 <body>
 <div id="app">
@@ -17,9 +18,12 @@
         <span class="title" data-i18n="Library"></span>
         <div class="spacer" data-tauri-drag-region></div>
         <input id="search" type="search" data-i18n-placeholder="Search library" spellcheck="false">
+        <button id="search-toggle" class="icon-only mobile-only" data-icon="search" data-i18n-title="Search library"></button>
         <button id="view-button" class="icon-only" data-popover-toggle data-icon="more" data-i18n-title="View"></button>
     </header>
     <main id="main">
+        <section id="continue" class="mobile-only" hidden></section>
+        <h3 id="books-heading" class="mobile-only" hidden></h3>
         <div id="books" class="grid" role="list"></div>
         <div id="empty" class="placeholder" hidden>
             <img src="icon.png" alt="" width="96" height="96">
@@ -54,7 +58,7 @@
 <div id="book-menu" class="popover menu" hidden>
     <button data-action="open"><span data-i18n="Open"></span></button>
     <button data-action="info" data-icon="info"><span data-i18n="Book Info"></span></button>
-    <button data-action="reveal" data-icon="folder"><span data-i18n="Show in Folder"></span></button>
+    <button data-action="reveal" data-icon="folder" class="desktop-only"><span data-i18n="Show in Folder"></span></button>
     <hr>
     <button data-action="remove" class="destructive" data-icon="trash"><span data-i18n="Remove from Library"></span></button>
 </div>
@@ -83,6 +87,8 @@
     </div>
     <form method="dialog" class="dialog-actions"><button class="suggested" data-i18n="Close"></button></form>
 </dialog>
+
+<button id="fab" class="mobile-only" data-icon="plus" data-i18n-title="Add Books…"></button>
 
 <div id="drop-overlay" hidden><div data-i18n="Open a book or drop files here"></div></div>
 <div id="toast" class="toast" hidden></div>
