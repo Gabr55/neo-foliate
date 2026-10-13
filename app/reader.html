@@ -103,10 +103,13 @@
         <footer id="navbar">
             <div class="nav-row">
                 <button id="prev-button" class="icon-only desktop-only" data-icon="back" data-i18n-title="Previous"></button>
-                <div class="progress">
-                    <input id="progress-slider" type="range" min="0" max="1" step="any" value="0" list="tick-marks">
-                    <datalist id="tick-marks"></datalist>
-                </div>
+                <!-- Read-only progress; tap it to pick a place to jump to -->
+                <button id="progress-button" class="progress" data-popover-toggle data-i18n-title="Go to Location">
+                    <span class="progress-track">
+                        <span id="progress-ticks"></span>
+                        <span id="progress-fill"></span>
+                    </span>
+                </button>
                 <span id="location-label"></span>
                 <span id="percent-label"></span>
                 <button id="next-button" class="icon-only desktop-only" data-icon="forward" data-i18n-title="Next"></button>
@@ -188,6 +191,18 @@
     </div>
     <label class="row"><span data-i18n="Invert in dark mode"></span><input type="checkbox" id="invert"></label>
     <label class="row android-only"><span data-i18n="Volume keys turn pages"></span><input type="checkbox" id="volume-keys"></label>
+</div>
+
+<div id="jump-menu" class="popover jump" hidden>
+    <div class="jump-heading" data-i18n="Go to Location"></div>
+    <div id="jump-chapter"></div>
+    <div id="jump-position"></div>
+    <input id="jump-slider" type="range" min="0" max="1" step="0.0005" list="tick-marks">
+    <datalist id="tick-marks"></datalist>
+    <div class="jump-actions">
+        <button id="jump-cancel" data-i18n="Cancel"></button>
+        <button id="jump-go" class="suggested" data-i18n="Go"></button>
+    </div>
 </div>
 
 <div id="more-menu" class="popover menu" hidden>

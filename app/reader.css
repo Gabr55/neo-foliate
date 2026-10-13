@@ -406,14 +406,92 @@ foliate-view::part(head), foliate-view::part(foot) {
     pointer-events: none;
 }
 
-.progress {
+/* Read-only progress bar; a tap opens "Go to Location" */
+#content button.progress {
     flex: 1;
-    display: flex;
+    min-width: 0;
+    height: 30px;
+    padding: 0 6px;
+    background: none;
 }
 
-#progress-slider {
+#content button.progress:hover .progress-track {
+    height: 6px;
+}
+
+.progress-track {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--book-fg) 15%, transparent);
+    overflow: hidden;
+    transition: height .15s ease;
+}
+
+#progress-fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 0;
+    background: var(--book-link);
+    border-radius: inherit;
+    transition: width .25s ease;
+}
+
+.tick {
+    position: absolute;
+    inset-block: 0;
+    width: 1px;
+    background: color-mix(in srgb, var(--book-bg) 70%, transparent);
+    z-index: 1;
+}
+
+.jump {
+    width: 340px;
+    padding: 14px 16px;
+}
+
+.jump-heading {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    margin-bottom: 6px;
+}
+
+#jump-chapter {
+    font-size: 15px;
+    font-weight: 600;
+    min-height: 1.4em;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#jump-position {
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 10px;
+}
+
+#jump-slider {
     width: 100%;
-    accent-color: var(--book-link);
+    margin: 4px 0 14px;
+}
+
+.jump-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.jump-actions button {
+    padding: 0 16px;
+    background: var(--hover);
+}
+
+.jump-actions button.suggested {
+    background: var(--accent);
 }
 
 #location-label, #percent-label {
@@ -842,8 +920,21 @@ foliate-view::part(head), foliate-view::part(foot) {
     display: none;
 }
 
-.mobile #progress-slider {
-    height: 32px;
+.mobile #content button.progress {
+    height: 40px;
+}
+
+.mobile .jump {
+    width: auto;
+}
+
+.mobile #jump-slider {
+    height: 36px;
+}
+
+.mobile .jump-actions button {
+    flex: 1;
+    min-height: 48px;
 }
 
 .mobile #tts-bar {

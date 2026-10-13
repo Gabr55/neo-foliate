@@ -522,8 +522,7 @@ class Reader {
             }
         }
 
-        const slider = $('#progress-slider')
-        if (document.activeElement !== slider) slider.value = fraction
+        $('#progress-fill').style.width = `${fraction * 100}%`
         $('#percent-label').textContent = percentFormat.format(fraction)
         $('#location-label').textContent = pageItem ? pageText(pageItem.label)
             : location ? locText(location.current + 1, location.total) : ''
@@ -764,10 +763,68 @@ class Reader {
     #buildTicks() {
         const list = $('#tick-marks')
         list.replaceChildren()
+        $('#progress-ticks').replaceChildren()
+        const dir = this.book.dir === 'rtl' ? 'rtl' : 'ltr'
+        $('#jump-slider').dir = dir
+        $('#progress-button').dir = dir
         if (this.view.isFixedLayout) return
-        for (const fraction of this.view.getSectionFractions())
-            list.append(el('option', { value: fraction }))
-        $('#progress-slider').dir = this.book.dir ?? 'ltr'
+        const fractions = this.view.getSectionFractions()
+        for (const fraction of fractions) list.append(el('option', { value: fraction }))
+        // chapter marks on the progress bar, unless there are too many to read
+        if (fractions.length <= 60) $('#progress-ticks').append(...fractions.slice(1, -1)
+            .map(f => el('span', { class: 'tick', style: `inset-inline-start: ${f * 100}%` })))
+    }
+
+    // --- Go to location ---
+
+    // Chapter labels by section index, for previews while choosing a place
+    #sectionLabels = null
+    #sectionLabel(index) {
+        if (!this.#sectionLabels) {
+            this.#sectionLabels = []
+            const walk = items => {
+                for (const item of items ?? []) {
+                    try {
+                        const i = this.view.resolveNavigation(item.href)?.index
+                        if (i != null && this.#sectionLabels[i] == null) this.#sectionLabels[i] = item.label
+                    } catch {
+                        // ignore entries that do not resolve
+                    }
+                    walk(item.subitems)
+                }
+            }
+            walk(this.book.toc)
+        }
+        for (let i = index; i >= 0; i--)
+            if (this.#sectionLabels[i] != null) return this.#sectionLabels[i]
+        return ''
+    }
+
+    previewJump(fraction) {
+        const fractions = this.view.getSectionFractions()
+        let index = 0
+        while (index < fractions.length - 2 && fractions[index + 1] <= fraction) index++
+        $('#jump-chapter').textContent = this.#sectionLabel(index)
+        const total = this.location?.location?.total
+        $('#jump-position').textContent = [
+            total ? t('Loc %s of %s', Math.min(total, Math.floor(fraction * total) + 1), total) : '',
+            percentFormat.format(fraction),
+        ].filter(Boolean).join(' · ')
+    }
+
+    openJump(anchor) {
+        if (!this.view) return
+        const slider = $('#jump-slider')
+        slider.value = this.location?.fraction ?? 0
+        this.previewJump(parseFloat(slider.value))
+        showPopover($('#jump-menu'), anchor, { prefer: 'above' })
+        if (!isMobile) slider.focus()
+    }
+
+    jump() {
+        const fraction = parseFloat($('#jump-slider').value)
+        closePopover()
+        this.view?.goToFraction(fraction)
     }
 
     // --- Footnotes ---
@@ -1190,8 +1247,16 @@ $('#tts-voice').addEventListener('change', e => {
     reader.speech.setVoice(prefs.ttsVoice)
 })
 
-$('#progress-slider').addEventListener('input', e =>
-    reader.view?.goToFraction(parseFloat(e.target.value)))
+$('#progress-button').addEventListener('click', e => {
+    if (isPopoverOpen($('#jump-menu'))) return closePopover()
+    reader.openJump(e.currentTarget.getBoundingClientRect())
+})
+$('#jump-slider').addEventListener('input', e => reader.previewJump(parseFloat(e.target.value)))
+$('#jump-slider').addEventListener('keydown', e => {
+    if (e.key === 'Enter') reader.jump()
+})
+$('#jump-go').addEventListener('click', () => reader.jump())
+$('#jump-cancel').addEventListener('click', () => closePopover())
 
 for (const b of $$('.sidebar-tabs button'))
     b.addEventListener('click', () => reader.showPanel(b.dataset.panel))

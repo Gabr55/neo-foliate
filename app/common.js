@@ -204,6 +204,8 @@ const strings = {
         'Go to Reference': 'Перейти к примечанию',
         'More': 'Ещё',
         'Listen': 'Слушать',
+        'Go to Location': 'Перейти к месту',
+        'Go': 'Перейти',
         'Continue reading': 'Продолжить чтение',
         'Continue': 'Продолжить',
         'All books': 'Все книги',
