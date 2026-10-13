@@ -1,5 +1,12 @@
 import { prefs } from './common.js'
 import { isAndroid, AndroidSynth } from './android.js'
+import { Overlayer } from './foliate-js/overlayer.js'
+
+// The word being read is drawn on the annotation layer instead of being
+// selected: a real selection brings up handles and menus on phones.
+// The prefix makes foliate-js treat it like a search mark, so taps on it
+// are not reported as annotation clicks.
+const MARK_KEY = 'foliate-search:neo-tts'
 
 // Read aloud with the system speech synthesizer (Web Speech API).
 // foliate-js produces SSML with <mark> elements; we turn it into plain text,
@@ -95,8 +102,27 @@ export class Speech {
         this.onState?.(state)
     }
 
+    #highlight = range => {
+        const renderer = this.reader.view.renderer
+        // follow the voice to the next page without selecting anything
+        renderer.scrollToAnchor?.(range)
+        const contents = renderer.getContents()
+            .find(c => c.doc === range.startContainer?.ownerDocument)
+        const color = getComputedStyle(document.documentElement).getPropertyValue('--book-link').trim()
+        try {
+            contents?.overlayer?.add(MARK_KEY, range, Overlayer.highlight, { color: color || 'currentColor' })
+        } catch (e) {
+            console.warn(e)
+        }
+    }
+
+    #clearHighlight() {
+        for (const { overlayer } of this.reader.view?.renderer?.getContents?.() ?? [])
+            overlayer?.remove(MARK_KEY)
+    }
+
     async #init() {
-        await this.reader.view.initTTS()
+        await this.reader.view.initTTS('word', this.#highlight)
         return this.reader.view.tts
     }
 
@@ -241,6 +267,7 @@ export class Speech {
     stop() {
         this.#generation++
         this.synth?.cancel()
+        this.#clearHighlight()
         this.#currentSSML = null
         if (this.state !== 'stopped') this.#setState('stopped')
     }

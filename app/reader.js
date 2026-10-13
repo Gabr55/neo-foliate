@@ -390,7 +390,7 @@ class Reader {
         if (isAndroid) {
             android.setSystemBars(isLightColor(getComputedStyle(document.documentElement)
                 .getPropertyValue('--book-bg').trim()))
-            android.setVolumeKeys(prefs.volumeKeys !== false)
+            this.syncVolumeKeys()
         }
 
         const renderer = this.view?.renderer
@@ -505,11 +505,11 @@ class Reader {
         const locText = (a, b) => t('Loc %s of %s', a, b)
         const pageText = label => this.pageTotal
             ? t('Page %s of %s', label, this.pageTotal) : t('Page %s', label)
-        if (heads) {
+        if (heads?.length) {
             heads.at(-1).innerText = tocItem?.label ?? ''
             if (heads.length > 1) heads[0].innerText = formatLanguageMap(this.book.metadata?.title)
         }
-        if (feet && location) {
+        if (feet?.length && location) {
             const { current, next, total } = location
             if (pageItem) {
                 feet.at(-1).innerText = pageText(pageItem.label)
@@ -542,6 +542,15 @@ class Reader {
         doc.addEventListener('keydown', e => this.handleKeydown(e))
         doc.addEventListener('wheel', e => this.handleWheel(e), { passive: false })
         doc.addEventListener('pointerdown', () => closePopover())
+        // While reading aloud, swipes do not turn pages
+        for (const type of ['touchstart', 'touchmove', 'touchend']) doc.addEventListener(type, e => {
+            if (!this.isSpeaking) return
+            e.stopImmediatePropagation()
+            if (type === 'touchmove') {
+                e.preventDefault()
+                this.notifySpeaking()
+            }
+        }, { capture: true, passive: false })
 
         for (const img of doc.querySelectorAll('img')) img.addEventListener('dblclick', () =>
             fetch(img.src).then(res => res.blob()).then(blobToDataURL).then(url => {
@@ -585,9 +594,43 @@ class Reader {
         if (document.querySelector('.popover:not([hidden])')) return closePopover()
         if (this.#chromeVisible) return this.setChrome(false)
         const w = window.innerWidth
-        if (x < w * 0.28) this.view.goLeft()
-        else if (x > w * 0.72) this.view.goRight()
-        else this.setChrome(true)
+        const edge = x < w * 0.28 ? 'left' : x > w * 0.72 ? 'right' : null
+        if (!edge) return this.setChrome(true)
+        if (this.isSpeaking) return this.notifySpeaking()
+        if (edge === 'left') this.view.goLeft()
+        else this.view.goRight()
+    }
+
+    // --- Reading aloud drives the pages ---
+
+    get isSpeaking() {
+        return this.#speech?.state === 'playing'
+    }
+
+    #speakingNoticeAt = 0
+    notifySpeaking() {
+        const now = Date.now()
+        if (now - this.#speakingNoticeAt < 4000) return
+        this.#speakingNoticeAt = now
+        toast(t('Pages turn by themselves while reading aloud'))
+    }
+
+    // Explicit jumps (contents, search, Go to Location…) keep reading aloud
+    // from the new place
+    async navigate(go) {
+        const speaking = this.isSpeaking
+        if (speaking) this.#speech.pause()
+        try {
+            await go()
+        } catch (e) {
+            console.error(e)
+        }
+        if (speaking) this.#speech.start()
+    }
+
+    syncVolumeKeys() {
+        // Volume keys control the volume while reading aloud
+        if (isAndroid) android.setVolumeKeys(prefs.volumeKeys !== false && !this.isSpeaking)
     }
 
     setChrome(visible) {
@@ -604,6 +647,10 @@ class Reader {
     handleWheel(e) {
         const view = this.view
         if (!view || e.ctrlKey) return
+        if (this.isSpeaking) {
+            e.preventDefault()
+            return this.notifySpeaking()
+        }
         const fixed = view.isFixedLayout
         if (!fixed && prefs.flow !== 'paginated') return
         if (fixed && prefs.zoom !== 1) return
@@ -679,6 +726,11 @@ class Reader {
         if ((e.altKey && k === 'ArrowRight') || (mod && k === ']')) { e.preventDefault(); return view?.history.forward() }
         if (!view || mod || e.altKey) return
         if (target?.type === 'range') return
+        if (this.isSpeaking && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'h', 'j', 'k', 'l',
+            'PageUp', 'PageDown', ' ', 'Home', 'End'].includes(k)) {
+            e.preventDefault()
+            return this.notifySpeaking()
+        }
         switch (k) {
             case 'ArrowLeft': case 'h': e.preventDefault(); view.goLeft(); break
             case 'ArrowRight': case 'l': e.preventDefault(); view.goRight(); break
@@ -757,7 +809,7 @@ class Reader {
         const toc = this.book.toc
         if (!toc?.length) return
         this.#tocView = createTOCView(toc, href => {
-            this.view.goTo(href).catch(e => console.error(e))
+            this.navigate(() => this.view.goTo(href))
             if (window.innerWidth <= 760) this.toggleSidebar(false)
         })
         $('#toc-view').replaceChildren(this.#tocView.element)
@@ -833,7 +885,7 @@ class Reader {
     jump() {
         const fraction = parseFloat($('#jump-slider').value)
         closePopover()
-        this.view?.goToFraction(fraction)
+        this.navigate(() => this.view?.goToFraction(fraction))
     }
 
     // --- Footnotes ---
@@ -1018,7 +1070,7 @@ class Reader {
             children.push(el('button', {
                 class: 'item annotation-item',
                 onclick: () => {
-                    this.view.goTo(annotation.value)
+                    this.navigate(() => this.view.goTo(annotation.value))
                     if (window.innerWidth <= 760) this.toggleSidebar(false)
                 },
             },
@@ -1125,7 +1177,7 @@ class Reader {
             return el('div', { class: 'item bookmark-item' },
                 el('button', {
                     class: 'item-main',
-                    onclick: () => this.view.goTo(cfi),
+                    onclick: () => this.navigate(() => this.view.goTo(cfi)),
                 }, icon('bookmark'), el('span', { class: 'item-text' }, item?.label || cfi)),
                 el('button', {
                     class: 'icon-only item-remove',
@@ -1162,7 +1214,7 @@ class Reader {
         }
         const addItem = (cfi, excerpt) => results.append(el('button', {
             class: 'item search-item',
-            onclick: () => this.view.goTo(cfi),
+            onclick: () => this.navigate(() => this.view.goTo(cfi)),
         }, el('span', { class: 'item-text' },
             excerpt.pre, el('mark', {}, excerpt.match), excerpt.post)))
         try {
@@ -1193,6 +1245,7 @@ class Reader {
     get speech() {
         this.#speech ??= new Speech(this, {
             onState: state => {
+                this.syncVolumeKeys()
                 $('#tts-bar').hidden = state === 'stopped'
                 const play = $('#tts-play')
                 play.replaceChildren(icon(state === 'playing' ? 'pause' : 'play'))

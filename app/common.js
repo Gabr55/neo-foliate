@@ -204,6 +204,7 @@ const strings = {
         'Go to Reference': 'Перейти к примечанию',
         'More': 'Ещё',
         'Listen': 'Слушать',
+        'Pages turn by themselves while reading aloud': 'Во время чтения вслух страницы листаются сами',
         'Go to Location': 'Перейти к месту',
         'Go': 'Перейти',
         'Continue reading': 'Продолжить чтение',
