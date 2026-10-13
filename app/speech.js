@@ -1,12 +1,32 @@
-import { prefs } from './common.js'
+import { prefs, t } from './common.js'
 import { isAndroid, AndroidSynth } from './android.js'
-import { Overlayer } from './foliate-js/overlayer.js'
 
 // The word being read is drawn on the annotation layer instead of being
 // selected: a real selection brings up handles and menus on phones.
 // The prefix makes foliate-js treat it like a search mark, so taps on it
 // are not reported as annotation clicks.
 const MARK_KEY = 'foliate-search:neo-tts'
+
+// Soft rounded marker around the word, a little larger than the text
+const roundedMark = (rects, { color }) => {
+    const ns = 'http://www.w3.org/2000/svg'
+    const g = document.createElementNS(ns, 'g')
+    g.setAttribute('fill', color)
+    g.style.opacity = 'var(--overlayer-highlight-opacity, .3)'
+    g.style.mixBlendMode = 'var(--overlayer-highlight-blend-mode, normal)'
+    for (const { left, top, height, width } of rects) {
+        if (!width || !height) continue
+        const padX = Math.max(2, height * 0.18), padY = Math.max(1, height * 0.08)
+        const r = document.createElementNS(ns, 'rect')
+        r.setAttribute('x', left - padX)
+        r.setAttribute('y', top - padY)
+        r.setAttribute('width', width + 2 * padX)
+        r.setAttribute('height', height + 2 * padY)
+        r.setAttribute('rx', (height + 2 * padY) / 2.4)
+        g.append(r)
+    }
+    return g
+}
 
 // Read aloud with the system speech synthesizer (Web Speech API).
 // foliate-js produces SSML with <mark> elements; we turn it into plain text,
@@ -66,7 +86,7 @@ export class Speech {
         })
         const def = document.createElement('option')
         def.value = ''
-        def.textContent = '—'
+        def.textContent = t('Default voice')
         select.replaceChildren(def, ...sorted.map(v => {
             const option = document.createElement('option')
             option.value = v.voiceURI
@@ -110,7 +130,7 @@ export class Speech {
             .find(c => c.doc === range.startContainer?.ownerDocument)
         const color = getComputedStyle(document.documentElement).getPropertyValue('--book-link').trim()
         try {
-            contents?.overlayer?.add(MARK_KEY, range, Overlayer.highlight, { color: color || 'currentColor' })
+            contents?.overlayer?.add(MARK_KEY, range, roundedMark, { color: color || 'currentColor' })
         } catch (e) {
             console.warn(e)
         }

@@ -519,22 +519,27 @@ class Reader {
         const locText = (a, b) => t('Loc %s of %s', a, b)
         const pageText = label => this.pageTotal
             ? t('Page %s of %s', label, this.pageTotal) : t('Page %s', label)
+        // Margins: book title on top, chapter and position at the bottom
+        // ("Глава 1 · 5 / 51"); two-page spreads show both pages' positions
+        const chapter = tocItem?.label ?? ''
+        const title = formatLanguageMap(this.book.metadata?.title)
+        const numbers = (a, b) => b ? `${a} / ${b}` : `${a}`
         if (heads?.length) {
-            heads.at(-1).innerText = tocItem?.label ?? ''
-            if (heads.length > 1) heads[0].innerText = formatLanguageMap(this.book.metadata?.title)
+            heads[0].innerText = title
+            if (heads.length > 1) heads.at(-1).innerText = chapter
         }
         if (feet?.length && location) {
             const { current, next, total } = location
-            if (pageItem) {
-                feet.at(-1).innerText = pageText(pageItem.label)
-                if (feet.length > 1) feet[0].innerText = locText(current + 1, total)
+            const position = pageItem ? numbers(pageItem.label, this.pageTotal) : numbers(current + 1, total)
+            if (feet.length === 1) feet[0].innerText = [chapter, position].filter(Boolean).join(' · ')
+            else if (pageItem) {
+                feet[0].innerText = chapter
+                feet.at(-1).innerText = position
             } else {
-                feet[0].innerText = locText(current + 1, total)
-                if (feet.length > 1) {
-                    const r = 1 - 1 / feet.length
-                    const end = Math.floor((1 - r) * current + r * next)
-                    feet.at(-1).innerText = locText(end + 1, total)
-                }
+                const r = 1 - 1 / feet.length
+                const end = Math.floor((1 - r) * current + r * next)
+                feet[0].innerText = numbers(current + 1, total)
+                feet.at(-1).innerText = numbers(end + 1, total)
             }
         }
 
@@ -544,7 +549,10 @@ class Reader {
             $('#mini-fill').style.width = `${fraction * 100}%`
             $('#percent-label').textContent = percentFormat.format(fraction)
         }
-        $('#location-label').textContent = pageItem ? pageText(pageItem.label)
+        const locationLabel = $('#location-label')
+        locationLabel.textContent = pageItem ? numbers(pageItem.label, this.pageTotal)
+            : location ? numbers(location.current + 1, location.total) : ''
+        locationLabel.title = pageItem ? pageText(pageItem.label)
             : location ? locText(location.current + 1, location.total) : ''
         if (tocItem?.href) this.#tocView?.setCurrentHref?.(tocItem.href)
         const sectionTime = Number.isFinite(time?.section) ? time.section : null
@@ -1294,6 +1302,8 @@ class Reader {
             onState: state => {
                 this.syncVolumeKeys()
                 $('#tts-bar').hidden = state === 'stopped'
+                // phones: the book area makes room for the bar instead of hiding under it
+                document.body.classList.toggle('tts-active', state !== 'stopped')
                 const play = $('#tts-play')
                 play.replaceChildren(icon(state === 'playing' ? 'pause' : 'play'))
                 play.title = play.ariaLabel = t(state === 'playing' ? 'Pause' : 'Play')
@@ -1345,10 +1355,16 @@ $('#search-button').addEventListener('click', () => reader.openSearch())
 $('#bookmark-button').addEventListener('click', () => reader.toggleBookmark())
 $('#tts-button').addEventListener('click', () => reader.speech.toggle())
 $('#tts-play').addEventListener('click', () => reader.speech.toggle())
+new ResizeObserver(([entry]) => document.documentElement.style.setProperty('--tts-height',
+    `${entry.target.getBoundingClientRect().height}px`)).observe($('#tts-bar'))
 $('#tts-prev').addEventListener('click', () => reader.speech.prev())
 $('#tts-next').addEventListener('click', () => reader.speech.next())
 $('#tts-stop').addEventListener('click', () => reader.speech.stop())
+const rateFormat = new Intl.NumberFormat(navigator.language || 'en', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+const showRate = rate => $('#tts-rate-value').textContent = `${rateFormat.format(rate)}×`
 $('#tts-rate').value = prefs.ttsRate
+showRate(prefs.ttsRate)
+$('#tts-rate').addEventListener('input', e => showRate(parseFloat(e.target.value)))
 $('#tts-rate').addEventListener('change', e => {
     prefs.ttsRate = parseFloat(e.target.value)
     savePrefs(prefs)

@@ -999,6 +999,15 @@ foliate-view::part(head), foliate-view::part(foot) {
     transition: bottom .25s ease;
 }
 
+/* While listening, the text stays clear of the bar */
+.mobile body.chrome-hidden.tts-active #viewer {
+    bottom: var(--tts-height, 0px);
+}
+
+.mobile body.tts-active #mini-progress {
+    bottom: calc(var(--tts-height, 0px) + 5px);
+}
+
 .mobile .chrome-hidden #tts-bar {
     bottom: 0;
     padding-bottom: calc(6px + var(--safe-bottom));
@@ -1172,4 +1181,9 @@ foliate-view::part(head), foliate-view::part(foot) {
 .mobile .sidebar-tabs button {
     flex: 1;
     min-width: 0;
+}
+
+#tts-rate-value {
+    min-width: 2.6em;
+    font-variant-numeric: tabular-nums;
 }
