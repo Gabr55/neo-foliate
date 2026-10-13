@@ -122,10 +122,25 @@ export class Speech {
         this.onState?.(state)
     }
 
+    // Is the word on the page currently shown?
+    #isOnScreen(range) {
+        const visible = this.reader.location?.range
+        if (!visible || visible.startContainer?.ownerDocument !== range.startContainer?.ownerDocument) return false
+        try {
+            return visible.compareBoundaryPoints(Range.START_TO_START, range) <= 0
+                && visible.compareBoundaryPoints(Range.END_TO_END, range) >= 0
+        } catch {
+            return false
+        }
+    }
+
     #highlight = range => {
         const renderer = this.reader.view.renderer
-        // follow the voice to the next page without selecting anything
-        renderer.scrollToAnchor?.(range)
+        // Follow the voice to the next page without selecting anything. Only
+        // when the word left the page: scrolling to it on every word fires a
+        // relocation (position, progress, saving) each time, which made the
+        // marker lag behind the voice on phones.
+        if (!this.#isOnScreen(range)) renderer.scrollToAnchor?.(range)
         const contents = renderer.getContents()
             .find(c => c.doc === range.startContainer?.ownerDocument)
         const color = getComputedStyle(document.documentElement).getPropertyValue('--book-link').trim()
