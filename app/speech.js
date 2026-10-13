@@ -183,10 +183,22 @@ export class Speech {
         if (tts) this.#speak(tts.resume())
     }
 
+    // Start of the page on screen, collapsed, in the document TTS reads from
+    #visibleStart() {
+        const range = this.reader.location?.range
+        const doc = this.reader.view.renderer.getContents()[0]?.doc
+        if (!range || range.startContainer?.ownerDocument !== doc) return null
+        const start = range.cloneRange()
+        start.collapse(true)
+        return start
+    }
+
+    // Read from the page on screen, not from the start of the chapter
     async start() {
         if (!this.synth) return this.onError?.()
         const tts = await this.#init()
-        this.#speak(tts.start())
+        const start = this.#visibleStart()
+        this.#speak(start ? tts.from(start) ?? tts.start() : tts.start())
     }
 
     async fromRange(range) {
@@ -201,13 +213,17 @@ export class Speech {
         return this.start()
     }
 
+    #pausedAt = null
     pause() {
         this.#generation++
         this.synth?.cancel()
+        this.#pausedAt = this.reader.location?.cfi ?? null
         this.#setState('paused')
     }
 
+    // Resume where reading stopped, unless the reader turned to another page
     async resume() {
+        if (this.reader.location?.cfi !== this.#pausedAt) return this.start()
         const tts = await this.#init()
         this.#speak(tts.resume())
     }

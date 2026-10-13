@@ -6,6 +6,7 @@
 //   right away and starts the next one instead of being dropped
 // - smoother easing (cubic) and a shorter, distance-aware animation
 // - `isAnimating` lets the app tell gestures apart from animations
+// - taps no longer trigger a delayed snap that could undo a page turn
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -848,6 +849,7 @@ export class Paginator extends HTMLElement {
         const touch = e.changedTouches[0]
         this.#touchState = {
             x: touch?.screenX, y: touch?.screenY,
+            x0: touch?.screenX, y0: touch?.screenY,
             t: e.timeStamp,
             vx: 0, xy: 0,
         }
@@ -877,6 +879,16 @@ export class Paginator extends HTMLElement {
     #onTouchEnd() {
         this.#touchScrolled = false
         if (this.scrolled) return
+
+        // A tap is not a swipe: put back any tiny drift right away instead
+        // of snapping later, which could undo a page turn the tap triggers
+        const state = this.#touchState
+        if (state && Math.hypot(state.x - state.x0, state.y - state.y0) < 10) {
+            const [offset] = this.#scrollBounds ?? []
+            if (offset != null && this.#container[this.scrollProp] !== offset)
+                this.#container[this.scrollProp] = offset
+            return
+        }
 
         // XXX: Firefox seems to report scale as 1... sometimes...?
         // at this point I'm basically throwing `requestAnimationFrame` at

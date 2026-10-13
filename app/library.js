@@ -395,5 +395,13 @@ if (isAndroid) {
 }
 
 api.listen('library-changed', debounce(refresh, 300))
+// Coming back from a book on phones may restore this page from the
+// back/forward cache, with the progress it had before
+window.addEventListener('pageshow', e => {
+    if (e.persisted) refresh()
+})
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refresh()
+})
 window.addEventListener('focus', refresh)
 refresh()

@@ -281,9 +281,11 @@ class Reader {
     #chromeVisible = !isMobile
     #closeSidebar = () => this.toggleSidebar(false)
 
+    // Phones can leave the page at any moment (back button, app switch),
+    // so write sooner there
     save = debounce(() => {
         if (this.key) api.setData(this.key, this.data).catch(e => console.error(e))
-    }, 600)
+    }, isMobile ? 150 : 600)
 
     async open() {
         const name = fileName(this.path ?? '')
@@ -523,6 +525,7 @@ class Reader {
         }
 
         $('#progress-fill').style.width = `${fraction * 100}%`
+        $('#mini-fill').style.width = `${fraction * 100}%`
         $('#percent-label').textContent = percentFormat.format(fraction)
         $('#location-label').textContent = pageItem ? pageText(pageItem.label)
             : location ? locText(location.current + 1, location.total) : ''
@@ -764,6 +767,7 @@ class Reader {
         const list = $('#tick-marks')
         list.replaceChildren()
         $('#progress-ticks').replaceChildren()
+        $('#mini-ticks').replaceChildren()
         const dir = this.book.dir === 'rtl' ? 'rtl' : 'ltr'
         $('#jump-slider').dir = dir
         $('#progress-button').dir = dir
@@ -771,8 +775,13 @@ class Reader {
         const fractions = this.view.getSectionFractions()
         for (const fraction of fractions) list.append(el('option', { value: fraction }))
         // chapter marks on the progress bar, unless there are too many to read
-        if (fractions.length <= 60) $('#progress-ticks').append(...fractions.slice(1, -1)
-            .map(f => el('span', { class: 'tick', style: `inset-inline-start: ${f * 100}%` })))
+        const ticks = () => fractions.slice(1, -1)
+            .map(f => el('span', { class: 'tick', style: `inset-inline-start: ${f * 100}%` }))
+        if (fractions.length <= 60) {
+            $('#progress-ticks').append(...ticks())
+            $('#mini-ticks').append(...ticks())
+        }
+        $('#mini-progress').dir = dir
     }
 
     // --- Go to location ---
@@ -1220,7 +1229,11 @@ const reader = new Reader()
 globalThis.reader = reader
 
 $('#sidebar-button').addEventListener('click', () => reader.toggleSidebar())
-$('#library-button').addEventListener('click', () => api.showLibrary())
+$('#library-button').addEventListener('click', async () => {
+    reader.save.flush()
+    await reader.flush()
+    api.showLibrary()
+})
 $('#toc-button').addEventListener('click', () => reader.showPanel('toc'))
 $('#search-button-bottom').addEventListener('click', () => reader.openSearch())
 $('#sidebar-backdrop').addEventListener('click', () => reader.toggleSidebar(false))
