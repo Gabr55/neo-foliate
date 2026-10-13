@@ -7,7 +7,7 @@ import {
 import { makeBook, NotFoundError, UnsupportedTypeError } from './foliate-js/view.js'
 import { Overlayer } from './foliate-js/overlayer.js'
 import { FootnoteHandler } from './foliate-js/footnotes.js'
-import { createTOCView } from './foliate-js/ui/tree.js'
+import { createTOC } from './toc.js'
 import * as CFI from './foliate-js/epubcfi.js'
 import { ensureIdentifier, plainMetadata, saveCover } from './bookdata.js'
 import { showBookInfo } from './info.js'
@@ -844,9 +844,11 @@ class Reader {
     #buildTOC() {
         const toc = this.book.toc
         if (!toc?.length) return
-        this.#tocView = createTOCView(toc, href => {
-            this.navigate(() => this.view.goTo(href))
-            if (window.innerWidth <= 760) this.toggleSidebar(false)
+        this.#tocView = createTOC(toc, {
+            onNavigate: href => {
+                this.navigate(() => this.view.goTo(href))
+                this.closeDrawerOnPhone()
+            },
         })
         $('#toc-view').replaceChildren(this.#tocView.element)
     }
