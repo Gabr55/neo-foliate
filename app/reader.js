@@ -184,6 +184,16 @@ const formatMinutes = minutes => minutes < 1 ? '< ' + minuteFormat.format(1)
     : minutes < 60 ? minuteFormat.format(Math.round(minutes))
         : hourFormat.format(Math.round(minutes / 6) / 10)
 
+const mixColors = (a, b, amount) => {
+    const parse = hex => {
+        const n = parseInt(String(hex).replace('#', '').slice(0, 6), 16)
+        return [n >> 16 & 255, n >> 8 & 255, n & 255]
+    }
+    const [x, y] = [parse(a), parse(b)]
+    return '#' + x.map((v, i) => Math.round(v * amount + y[i] * (1 - amount))
+        .toString(16).padStart(2, '0')).join('')
+}
+
 const isLightColor = hex => {
     const n = parseInt(String(hex).replace('#', '').slice(0, 6), 16)
     if (isNaN(n)) return true
@@ -396,6 +406,11 @@ class Reader {
         root.setProperty('--book-link', colors.link)
         document.body.classList.toggle('invert', prefs.invert && this.isDark)
         document.body.classList.toggle('dark', this.isDark)
+        // Read-aloud marker: the theme's accent leaning toward its text color,
+        // so it matches every theme; stronger on dark pages, where it lightens
+        const palette = this.isDark && !prefs.invert ? theme.dark : theme.light
+        root.setProperty('--tts-marker', mixColors(palette.link, palette.fg, 0.7))
+        root.setProperty('--tts-marker-opacity', this.isDark && !prefs.invert ? '0.4' : '0.3')
         if (isAndroid) {
             android.setSystemBars(isLightColor(getComputedStyle(document.documentElement)
                 .getPropertyValue('--book-bg').trim()))

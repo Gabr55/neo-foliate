@@ -235,7 +235,11 @@ class NeoBridge(private val activity: Activity, private val webView: WebView) {
             ttsReady = status == TextToSpeech.SUCCESS
             if (!ttsReady) return@TextToSpeech
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(chunkId: String) {}
+                // The voice really started: the page marks the first word then
+                override fun onStart(chunkId: String) {
+                    val (id, offset) = synchronized(chunks) { chunks[chunkId] } ?: return
+                    if (offset == 0) emit("tts", JSONObject().put("id", id).put("type", "start"))
+                }
 
                 override fun onRangeStart(chunkId: String, start: Int, end: Int, frame: Int) {
                     val (id, offset) = synchronized(chunks) { chunks[chunkId] } ?: return
@@ -301,7 +305,7 @@ class NeoBridge(private val activity: Activity, private val webView: WebView) {
     }
 
     @JavascriptInterface
-    fun ttsSpeak(id: String, text: String, lang: String, rate: Double, voice: String) {
+    fun ttsSpeak(id: String, text: String, lang: String, rate: Double, voice: String, flush: Boolean) {
         initTts()
         val speak = speak@{
             val engine = tts ?: return@speak
@@ -320,10 +324,16 @@ class NeoBridge(private val activity: Activity, private val webView: WebView) {
             parts.forEachIndexed { i, (offset, part) ->
                 val chunkId = "$id:$i"
                 synchronized(chunks) { chunks[chunkId] = Triple(id, offset, i == parts.lastIndex) }
-                engine.speak(part, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, chunkId)
+                // the first chunk replaces what is playing unless the page queues it
+                val mode = if (i == 0 && flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                engine.speak(part, mode, null, chunkId)
             }
         }
-        if (ttsReady) speak() else queued = speak
+        if (ttsReady) speak() else {
+            // several sentences may arrive before the engine is ready
+            val previous = queued
+            queued = if (flush || previous == null) speak else ({ previous(); speak() })
+        }
     }
 
     // System text-to-speech settings, to install voices

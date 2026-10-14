@@ -74,7 +74,8 @@ export const android = {
                 return []
             }
         },
-        speak: (id, text, lang, rate, voice) => native?.ttsSpeak(id, text, lang ?? '', rate ?? 1, voice ?? ''),
+        speak: (id, text, lang, rate, voice, flush = true) =>
+            native?.ttsSpeak(id, text, lang ?? '', rate ?? 1, voice ?? '', flush),
         stop: () => native?.ttsStop(),
         openSettings: () => native?.openTtsSettings(),
     },
@@ -90,7 +91,8 @@ export class AndroidSynth extends EventTarget {
             const utterance = this.#utterances.get(id)
             if (type === 'voices') return this.dispatchEvent(new Event('voiceschanged'))
             if (!utterance) return
-            if (type === 'range') utterance.onboundary?.({ charIndex: start })
+            if (type === 'start') utterance.onstart?.()
+            else if (type === 'range') utterance.onboundary?.({ name: 'word', charIndex: start })
             else if (type === 'done') {
                 this.#utterances.delete(id)
                 utterance.onend?.()
@@ -106,7 +108,8 @@ export class AndroidSynth extends EventTarget {
     speak(utterance) {
         const id = String(++this.#seq)
         this.#utterances.set(id, utterance)
-        android.tts.speak(id, utterance.text, utterance.lang, utterance.rate, utterance.voice?.voiceURI)
+        android.tts.speak(id, utterance.text, utterance.lang, utterance.rate,
+            utterance.voice?.voiceURI, !utterance.queue)
     }
     cancel() {
         for (const utterance of this.#utterances.values())
