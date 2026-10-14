@@ -2105,7 +2105,7 @@ dependencies = [
 
 [[package]]
 name = "neo-foliate"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "md-5",
  "serde",
