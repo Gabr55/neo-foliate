@@ -1,33 +1,20 @@
-import { prefs, savePrefs, t } from './common.js'
+import { prefs, t } from './common.js'
 import { isAndroid, AndroidSynth } from './android.js'
 
-// The word being read is drawn on the annotation layer instead of being
-// selected: a real selection brings up handles and menus on phones.
-// The prefix makes foliate-js treat it like a search mark, so taps on it
-// are not reported as annotation clicks.
+// Read aloud with the system speech synthesizer (Web Speech API, or the
+// Android engine through the bridge).
+//
+// Engines do not reliably report which word they are saying, so the marker
+// does not try to guess: each block goes to the voice sentence by sentence,
+// and the sentence handed to the voice is marked when it starts playing.
+
+// The marker is drawn on the annotation layer instead of selecting text: a
+// real selection brings up handles and menus on phones. The prefix makes
+// foliate-js treat it like a search mark, so taps on it are not reported as
+// annotation clicks.
 const MARK_KEY = 'foliate-search:neo-tts'
 
-// Typical speaking pace (weighted characters per second at rate 1), used
-// until the voice's real pace has been measured
-const DEFAULT_PACE = 16
-
-// Voices pause at punctuation; count those pauses as extra characters so an
-// estimated position keeps up with the speech
-const pauseWeight = ch => /[.!?…]/.test(ch) ? 8 : /[,;:—–]/.test(ch) ? 4 : /\n/.test(ch) ? 6 : 0
-
-// Cumulative weighted length at each character of the text
-const weightedPositions = text => {
-    const positions = new Float32Array(text.length + 1)
-    let total = 0
-    for (let i = 0; i < text.length; i++) {
-        positions[i] = total
-        total += 1 + pauseWeight(text[i])
-    }
-    positions[text.length] = total
-    return positions
-}
-
-// Sentence spans of the text
+// Sentence spans of the text; very short pieces stay with their neighbors
 const splitSentences = (text, lang) => {
     let segments
     try {
@@ -38,108 +25,13 @@ const splitSentences = (text, lang) => {
     const parts = []
     for (const { index, segment } of segments) {
         const last = parts.at(-1)
-        // keep very short pieces with the previous sentence
         if (last && (segment.trim().length < 12 || last.end - last.start < 12)) last.end = index + segment.length
         else parts.push({ start: index, end: index + segment.length })
     }
     return parts.length ? parts : [{ start: 0, end: text.length }]
 }
 
-// Spoken text split into utterances: whole blocks read without breaks;
-// very long ones are cut at sentence ends to stay within engine limits
-const splitForSpeech = (text, lang, maxLength = 600) => {
-    if (text.length <= maxLength) return [{ start: 0, end: text.length }]
-    const parts = []
-    for (const sentence of splitSentences(text, lang)) {
-        const last = parts.at(-1)
-        if (last && sentence.end - last.start <= maxLength) last.end = sentence.end
-        else parts.push({ ...sentence })
-    }
-    return parts
-}
-
-// --- What the marker covers: the word, its sentence or its paragraph ---
-
-const isBlockElement = el => {
-    const display = el.ownerDocument.defaultView?.getComputedStyle(el).display ?? 'block'
-    return !display.startsWith('inline') && display !== 'contents' && display !== 'ruby'
-}
-
-const blockOf = node => {
-    let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
-    while (el && el !== el.ownerDocument.body && !isBlockElement(el)) el = el.parentElement
-    return el ?? node.ownerDocument.body
-}
-
-// Text nodes of a block with their offsets, and its sentence spans (cached)
-const blockTexts = new WeakMap()
-const blockText = (block, lang) => {
-    let info = blockTexts.get(block)
-    if (info) return info
-    const nodes = []
-    let text = ''
-    const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        nodes.push({ node, start: text.length })
-        text += node.nodeValue
-    }
-    info = { nodes, text, sentences: splitSentences(text, lang) }
-    blockTexts.set(block, info)
-    return info
-}
-
-const pointAt = (nodes, offset) => {
-    let i = nodes.length - 1
-    while (i > 0 && nodes[i].start > offset) i--
-    const { node, start } = nodes[i]
-    return [node, Math.min(Math.max(offset - start, 0), node.nodeValue.length)]
-}
-
-export const expandRange = (range, granularity, lang) => {
-    if (granularity === 'word') return range
-    const block = blockOf(range.startContainer)
-    const doc = range.startContainer.ownerDocument
-    const result = doc.createRange()
-    if (granularity === 'paragraph') {
-        result.selectNodeContents(block)
-        return result
-    }
-    const { nodes, sentences } = blockText(block, lang)
-    const entry = nodes.find(n => n.node === range.startContainer)
-    if (!entry) return range
-    const offset = entry.start + range.startOffset
-    const sentence = sentences.find(s => s.start <= offset && offset < s.end) ?? sentences.at(-1)
-    if (!sentence) return range
-    // trim the spaces around the sentence
-    const span = blockTexts.get(block).text.slice(sentence.start, sentence.end)
-    const start = sentence.start + (span.length - span.trimStart().length)
-    const end = sentence.end - (span.length - span.trimEnd().length)
-    result.setStart(...pointAt(nodes, start))
-    result.setEnd(...pointAt(nodes, end))
-    return result
-}
-
-const sameRange = (a, b) => {
-    try {
-        return a && b && a.startContainer.ownerDocument === b.startContainer.ownerDocument
-            && a.compareBoundaryPoints(Range.START_TO_START, b) === 0
-            && a.compareBoundaryPoints(Range.END_TO_END, b) === 0
-    } catch {
-        return false
-    }
-}
-
-const charAtWeight = (positions, weight) => {
-    let lo = 0, hi = positions.length - 1
-    while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1
-        if (positions[mid] <= weight) lo = mid
-        else hi = mid - 1
-    }
-    return lo
-}
-
-// Soft rounded marker around the word, a little larger than the text
+// Soft rounded marker, a little larger than the text
 const roundedMark = (rects, { color }) => {
     const ns = 'http://www.w3.org/2000/svg'
     const g = document.createElementNS(ns, 'g')
@@ -160,10 +52,8 @@ const roundedMark = (rects, { color }) => {
     return g
 }
 
-// Read aloud with the system speech synthesizer (Web Speech API).
-// foliate-js produces SSML with <mark> elements; we turn it into plain text,
-// remember where each mark falls, and highlight words on boundary events.
-
+// foliate-js produces SSML with a <mark> before each word; turn it into the
+// plain text spoken and remember where each mark falls
 const parseSSML = ssml => {
     const doc = new DOMParser().parseFromString(ssml, 'application/xml')
     const root = doc.documentElement
@@ -191,10 +81,8 @@ export class Speech {
     #voice = null
     #rate = 1
     #voices = []
-    #currentSSML = null
-    // weighted characters per second at rate 1, learned per voice while
-    // reading and kept in the preferences for next time
-    #pace = new Map(Object.entries(prefs.ttsPace ?? {}))
+    // collects word ranges while a sentence's span is being looked up
+    #capture = null
 
     constructor(reader, { onState, onError }) {
         this.reader = reader
@@ -237,12 +125,6 @@ export class Speech {
         if (this.state === 'playing') this.#scheduleRestart()
     }
 
-    // The marking changed: redraw now and read on with the new split
-    setHighlight() {
-        this.#marked = null
-        if (this.state === 'playing') this.#scheduleRestart()
-    }
-
     setRate(rate) {
         this.#rate = rate
         if (this.state === 'playing') this.#scheduleRestart()
@@ -263,52 +145,79 @@ export class Speech {
         this.onState?.(state)
     }
 
-    // Is the word on the page currently shown?
+    // --- Marking ---
+
+    // Is the range on the page currently shown?
     #isOnScreen(range) {
         const visible = this.reader.location?.range
         if (!visible || visible.startContainer?.ownerDocument !== range.startContainer?.ownerDocument) return false
         try {
             return visible.compareBoundaryPoints(Range.START_TO_START, range) <= 0
-                && visible.compareBoundaryPoints(Range.END_TO_END, range) >= 0
+                && visible.compareBoundaryPoints(Range.START_TO_END, range) >= 0
         } catch {
             return false
         }
     }
 
-    #highlight = range => {
+    #draw(range) {
         const renderer = this.reader.view.renderer
-        // Follow the voice to the next page without selecting anything. Only
-        // when the word left the page: scrolling to it on every word fires a
-        // relocation (position, progress, saving) each time, which made the
-        // marker lag behind the voice on phones.
-        if (!this.#isOnScreen(range)) renderer.scrollToAnchor?.(range)
-        // the marker covers the word, its sentence or its paragraph
-        let marked
-        try {
-            marked = expandRange(range, this.granularity, this.reader.view?.language?.canonical)
-        } catch (e) {
-            console.warn(e)
-            marked = range
+        // Turn the page when the sentence starts on the next one. Only then:
+        // every scroll fires a relocation (position, progress, saving)
+        if (!this.#isOnScreen(range)) {
+            const start = range.cloneRange()
+            start.collapse(true)
+            renderer.scrollToAnchor?.(start)
         }
-        if (sameRange(marked, this.#marked)) return
-        this.#marked = marked
         const contents = renderer.getContents()
             .find(c => c.doc === range.startContainer?.ownerDocument)
         const color = getComputedStyle(document.documentElement).getPropertyValue('--tts-marker').trim()
         try {
-            contents?.overlayer?.add(MARK_KEY, marked, roundedMark, { color: color || 'currentColor' })
+            contents?.overlayer?.add(MARK_KEY, range, roundedMark, { color: color || 'currentColor' })
         } catch (e) {
             console.warn(e)
         }
     }
 
-    #marked = null
-    get granularity() {
-        return ['word', 'sentence', 'paragraph'].includes(prefs.ttsHighlight) ? prefs.ttsHighlight : 'sentence'
+    // foliate-js calls this with a word's range when a mark is set, and with
+    // a whole block when stepping between blocks while paused
+    #highlight = range => {
+        if (this.#capture) this.#capture.push(range)
+        else this.#draw(range)
+    }
+
+    // Mark the text from the first to the last word of a sentence. The marks
+    // are looked up last word first, so foliate-js remembers the sentence's
+    // first word: resuming starts again at the beginning of the sentence.
+    #markSentence(first, last) {
+        const tts = this.reader.view.tts
+        if (!tts || !first) return
+        const ranges = []
+        this.#capture = ranges
+        try {
+            if (last && last !== first) tts.setMark(last)
+            tts.setMark(first)
+        } finally {
+            this.#capture = null
+        }
+        const start = ranges.at(-1)
+        if (!start) return
+        const range = start.cloneRange()
+        const end = ranges.length > 1 ? ranges[0] : null
+        const lastWord = end ?? start
+        try {
+            // include the punctuation right after the last word ("word." or "word»")
+            let offset = lastWord.endOffset
+            const node = lastWord.endContainer
+            if (node.nodeType === Node.TEXT_NODE)
+                while (offset < node.length && !/\s/.test(node.data[offset])) offset++
+            range.setEnd(node, offset)
+        } catch {
+            // keep the first word if the end is elsewhere
+        }
+        this.#draw(range)
     }
 
     #clearHighlight() {
-        this.#marked = null
         for (const { overlayer } of this.reader.view?.renderer?.getContents?.() ?? [])
             overlayer?.remove(MARK_KEY)
     }
@@ -318,6 +227,8 @@ export class Speech {
         return this.reader.view.tts
     }
 
+    // --- Speaking ---
+
     #speak(ssml, retried = false) {
         const generation = ++this.#generation
         // WebKit may end an utterance spoken right after cancel() at once,
@@ -325,82 +236,15 @@ export class Speech {
         const wasSpeaking = this.synth.speaking || this.synth.pending
         this.synth.cancel()
         if (!ssml) return this.#nextSection(generation)
-        this.#currentSSML = ssml
         const { text, marks, lang } = parseSSML(ssml)
         if (!text.trim()) return this.#onEnd(generation)
         const utteranceLang = this.#voice?.lang || lang || this.reader.view?.language?.canonical || ''
 
-        // Follow the voice. The block is spoken sentence by sentence, so the
-        // start of every sentence puts the marker back in sync. Engines that
-        // report word boundaries drive the marker word by word; for others
-        // (some Android engines, network voices) it moves at the voice's
-        // measured pace in between.
-        let current = -1
-        const markAt = charIndex => {
-            let index = -1
-            for (let i = 0; i < marks.length && marks[i].offset <= charIndex; i++) index = i
-            if (index < 0 || index === current) return
-            current = index
-            this.reader.view.tts?.setMark(marks[index].name)
-        }
-
-        // Pace is learned per voice and speed: pauses do not shrink in
-        // proportion to the speed, so one number does not fit all speeds
-        const voiceKey = this.#voice?.voiceURI || utteranceLang
-        const rate = Math.round(this.#rate * 10) / 10
-        const paceKey = `${voiceKey}@${rate}`
-        const charsPerSecond = () => {
-            if (this.#pace.has(paceKey)) return this.#pace.get(paceKey) * this.#rate
-            // from the nearest measured speed; real voices slow down and
-            // speed up less than the rate says
-            let best = null
-            for (const [key, value] of this.#pace) {
-                const [voice, r] = key.split('@')
-                if (voice !== voiceKey || !r) continue
-                const distance = Math.abs(parseFloat(r) - rate)
-                if (!best || distance < best.distance) best = { distance, value, rate: parseFloat(r) }
-            }
-            if (!best) return DEFAULT_PACE * Math.pow(this.#rate, 0.8)
-            return best.value * best.rate * Math.pow(this.#rate / best.rate, 0.8)
-        }
-
-        const positions = weightedPositions(text)
-        // Word marking needs every sentence start as a sync point; sentence and
-        // paragraph marking read whole blocks, without breaks between sentences
-        const parts = this.granularity === 'word'
-            ? splitSentences(text, utteranceLang)
-            : splitForSpeech(text, utteranceLang)
-        let started = 0, spoke = false, requested = 0, wordBoundaries = false
-        let anchorTime = 0, anchorWeight = 0, timer = null
-        const tick = () => {
-            if (generation !== this.#generation || wordBoundaries) return
-            const weight = anchorWeight + (performance.now() - anchorTime) / 1000 * charsPerSecond()
-            markAt(Math.min(charAtWeight(positions, weight), text.length - 1))
-            timer = setTimeout(tick, 90)
-        }
-        // A part (the block or a sentence) started: re-anchor the estimate
-        const onPartStart = offset => {
-            if (generation !== this.#generation) return
-            const now = performance.now()
-            if (!started) started = now
-            anchorTime = now
-            anchorWeight = positions[offset]
-            markAt(offset)
-            clearTimeout(timer)
-            // give real word boundaries a moment before estimating
-            if (!wordBoundaries) timer = setTimeout(tick, offset ? 0 : 450)
-        }
-        const learnPace = (from, to, elapsed) => {
-            if (elapsed < 1500 || to - from < 40) return
-            const measured = (positions[to] - positions[from]) / (elapsed / 1000) / this.#rate
-            const previous = this.#pace.get(paceKey)
-            this.#pace.set(paceKey, previous ? previous * 0.5 + measured * 0.5 : measured)
-            prefs.ttsPace = Object.fromEntries(this.#pace)
-            savePrefs()
-        }
-
+        const parts = splitSentences(text, utteranceLang)
+        let spoke = false, requested = 0
         const utterances = parts.map(({ start, end }, i) => {
             const partText = text.slice(start, end)
+            const partMarks = marks.filter(m => m.offset >= start && m.offset < end)
             const utterance = globalThis.SpeechSynthesisUtterance && !isAndroid
                 ? new SpeechSynthesisUtterance(partText) : { text: partText }
             utterance.rate = this.#rate
@@ -408,45 +252,38 @@ export class Speech {
             utterance.lang = utteranceLang
             // later sentences queue behind the first instead of replacing it
             utterance.queue = i > 0
-            let partStarted = 0
+            let started = 0
             utterance.onstart = () => {
-                if (partStarted) return
-                partStarted = performance.now()
-                onPartStart(start)
+                if (started || generation !== this.#generation) return
+                started = performance.now()
+                // what was handed to the voice is what gets marked
+                this.#markSentence(partMarks[0]?.name, partMarks.at(-1)?.name)
             }
-            utterance.onboundary = e => {
+            utterance.onboundary = () => {
                 if (generation !== this.#generation) return
                 spoke = true
                 utterance.onstart()
-                const charIndex = start + e.charIndex
-                if (e.name === 'sentence') {
-                    anchorTime = performance.now()
-                    anchorWeight = positions[Math.min(charIndex, text.length)]
-                    markAt(charIndex)
-                    return
-                }
-                wordBoundaries = true
-                clearTimeout(timer)
-                markAt(charIndex)
             }
             utterance.onend = () => {
                 if (generation !== this.#generation) return
-                const elapsed = performance.now() - (partStarted || requested)
                 if (i === 0) {
                     // An immediate end without a single word spoken is a
                     // glitch, not the end of the text: say it again instead of
                     // moving on (no real sentence of 20+ characters is over
                     // within 150 ms)
-                    const early = !spoke && elapsed < 150
-                    if (early && !retried && partText.trim().length > 20) return this.#speak(ssml, true)
+                    const elapsed = performance.now() - (started || requested)
+                    if (!spoke && elapsed < 150 && !retried && partText.trim().length > 20)
+                        return this.#speak(ssml, true)
                 }
-                if (partStarted) learnPace(start, end, elapsed)
-                if (i < parts.length - 1) return
-                clearTimeout(timer)
+                if (i < parts.length - 1) {
+                    // the next sentence follows right away; mark it even if the
+                    // engine does not report its start
+                    utterances[i + 1].onstart()
+                    return
+                }
                 this.#onEnd(generation)
             }
             utterance.onerror = e => {
-                clearTimeout(timer)
                 if (generation !== this.#generation) return
                 if (e.error === 'interrupted' || e.error === 'canceled') return
                 console.error(e)
@@ -530,7 +367,8 @@ export class Speech {
         this.#setState('paused')
     }
 
-    // Resume where reading stopped, unless the reader turned to another page
+    // Resume at the start of the sentence that was playing, unless the reader
+    // turned to another page meanwhile
     async resume() {
         if (this.reader.location?.cfi !== this.#pausedAt) return this.start()
         const tts = await this.#init()
@@ -551,7 +389,6 @@ export class Speech {
         this.#generation++
         this.synth?.cancel()
         this.#clearHighlight()
-        this.#currentSSML = null
         if (this.state !== 'stopped') this.#setState('stopped')
     }
 }

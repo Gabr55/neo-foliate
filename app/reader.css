@@ -1192,15 +1192,3 @@ foliate-view::part(head), foliate-view::part(foot) {
     min-width: 2.6em;
     font-variant-numeric: tabular-nums;
 }
-
-#tts-highlight {
-    max-width: 150px;
-    background: transparent;
-    color: inherit;
-    border-color: color-mix(in srgb, var(--book-fg) 20%, transparent);
-}
-
-.mobile #tts-highlight {
-    flex: 0 1 34%;
-    min-width: 0;
-}

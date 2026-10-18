@@ -1461,12 +1461,6 @@ $('#tts-rate').addEventListener('change', e => {
     savePrefs(prefs)
     reader.speech.setRate(prefs.ttsRate)
 })
-$('#tts-highlight').value = ['word', 'sentence', 'paragraph'].includes(prefs.ttsHighlight) ? prefs.ttsHighlight : 'sentence'
-$('#tts-highlight').addEventListener('change', e => {
-    prefs.ttsHighlight = e.target.value
-    savePrefs(prefs)
-    reader.speech.setHighlight()
-})
 $('#tts-voice').addEventListener('change', e => {
     prefs.ttsVoice = e.target.value
     savePrefs(prefs)
