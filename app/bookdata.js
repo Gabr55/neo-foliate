@@ -51,6 +51,6 @@ export const registerBook = async (key, path, book, extra = {}) => {
     Object.assign(data, extra)
     await api.setData(key, data)
     await api.setURI(key, path)
-    if (!await api.getCover(key)) await saveCover(key, book)
+    if (!await api.coverExists(key)) await saveCover(key, book)
     return data
 }

@@ -17,7 +17,7 @@
         "img-src": "'self' blob: data:",
         "font-src": "'self' blob: data:",
         "media-src": "'self' blob: data:",
-        "connect-src": "'self' ipc: http://ipc.localhost blob: data:",
+        "connect-src": "'self' ipc: http://ipc.localhost blob: data: asset: http://asset.localhost",
         "frame-src": "'self' blob: data:",
         "worker-src": "'self' blob:",
         "object-src": "blob: data:",
@@ -25,7 +25,11 @@
       },
       "dangerousDisableAssetCspModification": [
         "style-src"
-      ]
+      ],
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
     }
   },
   "bundle": {

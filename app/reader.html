@@ -7,6 +7,16 @@
 <title>Neo Foliate</title>
 <!-- Use the patched paginator (smoother, interruptible page turns) -->
 <script type="importmap">{ "imports": { "./foliate-js/paginator.js": "./engine/paginator.js" } }</script>
+<!-- Fetch the reading engine while the page is parsed, not one module after another -->
+<link rel="modulepreload" href="foliate-js/view.js">
+<link rel="modulepreload" href="foliate-js/epubcfi.js">
+<link rel="modulepreload" href="foliate-js/progress.js">
+<link rel="modulepreload" href="foliate-js/overlayer.js">
+<link rel="modulepreload" href="foliate-js/text-walker.js">
+<link rel="modulepreload" href="foliate-js/footnotes.js">
+<link rel="modulepreload" href="foliate-js/epub.js">
+<link rel="modulepreload" href="foliate-js/vendor/zip.js">
+<link rel="modulepreload" href="engine/paginator.js">
 <link rel="stylesheet" href="common.css">
 <link rel="stylesheet" href="info.css">
 <link rel="stylesheet" href="reader.css">
@@ -102,6 +112,11 @@
             <button id="tts-play" class="icon-only" data-icon="pause" data-i18n-title="Pause"></button>
             <button id="tts-next" class="icon-only" data-icon="skip-forward" data-i18n-title="Next"></button>
             <select id="tts-voice" data-i18n-title="Voice"></select>
+            <select id="tts-highlight" data-i18n-title="Highlight while reading">
+                <option value="sentence" data-i18n="Sentence"></option>
+                <option value="paragraph" data-i18n="Paragraph"></option>
+                <option value="word" data-i18n="Word"></option>
+            </select>
             <label class="tts-rate"><span data-i18n="Speed"></span>
                 <input id="tts-rate" type="range" min="0.5" max="2.5" step="0.1">
                 <output id="tts-rate-value"></output>
@@ -185,6 +200,13 @@
                 <button data-columns="1">1</button>
                 <button data-columns="2">2</button>
                 <button data-columns="3">3</button>
+            </div>
+        </div>
+        <div class="row">
+            <span data-i18n="Page numbers"></span>
+            <div class="segmented" id="page-number-buttons">
+                <button data-pages="book" data-i18n="From book"></button>
+                <button data-pages="screen" data-i18n="By screen"></button>
             </div>
         </div>
         <label class="row"><span data-i18n="Justify"></span><input type="checkbox" id="justify"></label>

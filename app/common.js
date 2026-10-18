@@ -40,6 +40,9 @@ export const api = {
         else location.replace('index.html')
     },
     libraryFilesPath: () => invoke('library_files_path'),
+    // Copy a book into the library folder (no-op if already there)
+    storeBook: path => invoke('store_book', { path }),
+    coverExists: key => invoke('cover_exists', { key }),
     // A path the backend can read, for a file picked once (content:// on Android)
     readablePath: async path => isAndroid && path?.startsWith('content:')
         ? android.copyToLibrary(path, await invoke('temp_files_path'))
@@ -90,7 +93,16 @@ export const pickBooks = async () => {
 
 export const fileName = path => path.split(/[\\/]/).pop()
 
+// Books in the app's own folder are read through the asset protocol, which
+// streams the file; anything else (or if that fails) goes through IPC
 export const loadFile = async path => {
+    const toURL = tauri.core.convertFileSrc
+    if (toURL) try {
+        const res = await fetch(toURL(path))
+        if (res.ok) return new File([await res.blob()], fileName(path))
+    } catch (e) {
+        console.debug('asset read failed, using IPC', e)
+    }
     const bytes = await api.readBook(path)
     return new File([bytes], fileName(path))
 }
@@ -208,6 +220,13 @@ const strings = {
         'Go to Reference': 'Перейти к примечанию',
         'More': 'Ещё',
         'Listen': 'Слушать',
+        'Highlight while reading': 'Подсветка при чтении',
+        'Sentence': 'Предложение',
+        'Paragraph': 'Абзац',
+        'Word': 'Слово',
+        'Page numbers': 'Номера страниц',
+        'From book': 'Из книги',
+        'By screen': 'По экрану',
         'Expand': 'Развернуть',
         'Collapse': 'Свернуть',
         'Expand All': 'Развернуть всё',
@@ -320,6 +339,12 @@ export const formatLanguage = code => {
     }
 }
 
+// Reading progress of a book's data: the same fraction the reader shows
+// (by amount of text), falling back to Foliate's location-based progress
+export const bookFraction = data => Number.isFinite(data?.fraction)
+    ? Math.min(1, Math.max(0, data.fraction))
+    : progressFraction(data?.progress)
+
 export const progressFraction = progress => {
     if (!Array.isArray(progress)) return null
     const [current, total] = progress
@@ -348,6 +373,38 @@ export const debounce = (f, wait) => {
     }
     return debounced
 }
+
+// Text that scrolls back and forth when it does not fit, instead of being
+// cut off with an ellipsis
+const marquees = new Set()
+const measureMarquee = elem => {
+    const inner = elem.firstElementChild
+    if (!inner) return
+    elem.classList.remove('marquee-scroll')
+    const overflow = inner.scrollWidth - elem.clientWidth
+    if (overflow > 2 && elem.offsetParent) {
+        elem.style.setProperty('--marquee-shift', `${-overflow}px`)
+        // ~30px per second, plus the pauses at both ends
+        elem.style.setProperty('--marquee-duration', `${Math.max(6, overflow / 30 + 4)}s`)
+        elem.classList.add('marquee-scroll')
+    }
+}
+export const setMarquee = (elem, text) => {
+    let inner = elem.firstElementChild
+    if (!inner?.classList.contains('marquee-text')) {
+        inner = document.createElement('span')
+        inner.className = 'marquee-text'
+        elem.replaceChildren(inner)
+        elem.classList.add('marquee')
+        marquees.add(elem)
+    }
+    if (inner.textContent === text) return
+    inner.textContent = text
+    requestAnimationFrame(() => measureMarquee(elem))
+}
+window.addEventListener('resize', () => {
+    for (const elem of marquees) measureMarquee(elem)
+})
 
 export const el = (tag, props = {}, ...children) => {
     const elem = document.createElement(tag)
@@ -443,6 +500,9 @@ export const defaultPrefs = {
     ttsRate: 1,
     // -1 follows the system brightness (Android)
     brightness: -1,
+    // 'book': the book's own page numbers (or locations); 'screen': pages as
+    // laid out on this screen
+    pageNumbers: 'book',
 }
 
 // Preferences live in settings.json next to the library (see `settings_get`);

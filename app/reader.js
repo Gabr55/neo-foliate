@@ -1,6 +1,6 @@
 import {
     api, t, el, icon, translateDOM, renderIcons, loadFile, fileName, isMac, isMobile, pickBooks,
-    showDialog, pushOverlay, popOverlay,
+    showDialog, pushOverlay, popOverlay, setMarquee,
     formatLanguageMap, formatAuthors, percentFormat, debounce, themes, invertColor,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
 } from './common.js'
@@ -17,6 +17,20 @@ import { isAndroid, android, onAndroid } from './android.js'
 const $ = document.querySelector.bind(document)
 const $$ = s => Array.from(document.querySelectorAll(s))
 const appWindow = api.window()
+// Start reading and parsing the book right away, while the rest of the page
+// (preferences, interface) sets up
+const openBook = async path => {
+    // Work on the app's own copy of the book; Android imports are copies already
+    const stored = isAndroid ? path : await api.storeBook(path).catch(e => {
+        console.warn(e)
+        return path
+    })
+    const file = await loadFile(stored)
+    return { path: stored, book: await makeBook(file) }
+}
+const earlyBook = openBook(new URLSearchParams(location.search).get('path'))
+earlyBook.catch(() => {}) // reported when the reader opens
+
 await initPrefs()
 const darkQuery = matchMedia('(prefers-color-scheme: dark)')
 
@@ -307,8 +321,12 @@ class Reader {
         const name = fileName(this.path ?? '')
         document.title = name
         try {
-            const file = await loadFile(this.path)
-            this.book = await makeBook(file)
+            const { path, book } = await earlyBook
+            if (path && path !== this.path) {
+                this.path = path
+                history.replaceState(history.state, '', `reader.html?path=${encodeURIComponent(path)}`)
+            }
+            this.book = book
         } catch (e) {
             console.error(e)
             const message = e instanceof UnsupportedTypeError ? t('File type not supported')
@@ -330,9 +348,11 @@ class Reader {
         this.data.lastOpened = new Date().toISOString()
         this.data.annotations ??= []
         this.data.bookmarks ??= []
-        await api.setData(this.key, this.data)
-        await api.setURI(this.key, this.path)
-        if (!await api.getCover(this.key)) saveCover(this.key, book)
+        // Saving does not need to hold up opening the book
+        const { key, path } = this
+        api.setData(key, this.data).catch(e => console.error(e))
+        api.setURI(key, path).catch(e => console.error(e))
+        api.coverExists(key).then(exists => exists || saveCover(key, book)).catch(() => {})
 
         const title = formatLanguageMap(book.metadata?.title) || name
         document.title = title
@@ -366,10 +386,12 @@ class Reader {
             showTextStart: !this.data.lastLocation,
         })
 
-        for (const annotation of this.data.annotations) await this.#addAnnotation(annotation, false)
-        this.renderAnnotations()
-        this.renderBookmarks()
         this.view.focus()
+        performance.mark('book-ready')
+        // Annotations and bookmarks come in once the page is showing
+        Promise.all(this.data.annotations.map(a => this.#addAnnotation(a, false)))
+            .then(() => this.renderAnnotations())
+        this.renderBookmarks()
     }
 
     showError(title, message) {
@@ -395,6 +417,8 @@ class Reader {
     }
 
     applyAppearance() {
+        // font and layout changes change how much text fits on a page
+        this.#pageDensity.clear()
         applyColorScheme(prefs.colorScheme)
         appWindow.setTheme(prefs.colorScheme === 'system' ? null : prefs.colorScheme).catch(() => {})
         const theme = this.theme
@@ -437,6 +461,15 @@ class Reader {
         this.#syncSettingsUI()
     }
 
+    // Re-render the position labels (e.g. after the numbering mode changed)
+    clearPageDensity() {
+        this.#pageDensity.clear()
+    }
+
+    refreshLocation() {
+        if (this.location) this.#onRelocate(this.location)
+    }
+
     get style() {
         return {
             lineHeight: prefs.lineHeight,
@@ -462,6 +495,8 @@ class Reader {
             b.setAttribute('aria-pressed', b.dataset.scheme === prefs.colorScheme)
         for (const b of $$('#flow-buttons button'))
             b.setAttribute('aria-pressed', b.dataset.flow === prefs.flow)
+        for (const b of $$('#page-number-buttons button'))
+            b.setAttribute('aria-pressed', b.dataset.pages === prefs.pageNumbers)
         for (const b of $$('#column-buttons button'))
             b.setAttribute('aria-pressed', +b.dataset.columns === prefs.maxColumnCount)
         for (const b of $$('#theme-list button'))
@@ -529,7 +564,13 @@ class Reader {
 
     #onRelocate(detail) {
         this.location = detail
-        const { fraction, location, tocItem, pageItem, cfi, time } = detail
+        const { fraction, tocItem, cfi, time } = detail
+        // While the view has no size yet (starting up, hidden, rotating) the
+        // position comes without numbers; keep the last labels then
+        const location = Number.isFinite(detail.location?.current) ? detail.location : null
+        // Screen pages replace the book's numbering when chosen
+        const screen = prefs.pageNumbers === 'screen' ? this.#screenPages(detail) : null
+        const pageItem = screen ? null : detail.pageItem
         const { heads, feet } = this.view.renderer
         const locText = (a, b) => t('Loc %s of %s', a, b)
         const pageText = label => this.pageTotal
@@ -543,7 +584,12 @@ class Reader {
             heads.at(-1).innerText = chapter
             if (heads.length > 1) heads[0].innerText = title
         }
-        if (feet?.length && location) {
+        if (feet?.length && screen) {
+            // a spread shows several columns: number them like book pages
+            const columns = feet.length
+            const first = (screen.current - 1) * columns + 1
+            feet.forEach((foot, i) => foot.innerText = numbers(first + i, screen.total * columns))
+        } else if (feet?.length && location) {
             const { current, next, total } = location
             if (pageItem) {
                 feet.at(-1).innerText = numbers(pageItem.label, this.pageTotal)
@@ -565,26 +611,55 @@ class Reader {
             $('#percent-label').textContent = percentFormat.format(fraction)
         }
         const locationLabel = $('#location-label')
-        locationLabel.textContent = pageItem ? numbers(pageItem.label, this.pageTotal)
-            : location ? numbers(location.current + 1, location.total) : ''
-        locationLabel.title = pageItem ? pageText(pageItem.label)
-            : location ? locText(location.current + 1, location.total) : ''
+        const columns = Math.max(1, this.view.renderer.feet?.length ?? 1)
+        const locationText = screen ? numbers((screen.current - 1) * columns + 1, screen.total * columns)
+            : pageItem ? numbers(pageItem.label, this.pageTotal)
+                : location ? numbers(location.current + 1, location.total) : ''
+        if (locationText) {
+            locationLabel.textContent = locationText
+            locationLabel.title = pageItem ? pageText(pageItem.label)
+                : location ? locText(location.current + 1, location.total) : ''
+        }
         if (tocItem?.href) this.#tocView?.setCurrentHref?.(tocItem.href)
         const sectionTime = Number.isFinite(time?.section) ? time.section : null
         const totalTime = Number.isFinite(time?.total) ? time.total : null
         const chapterLeft = sectionTime != null ? t('%s left in chapter', formatMinutes(sectionTime)) : ''
         const bookLeft = totalTime != null ? t('%s left in book', formatMinutes(totalTime)) : ''
-        $('#subtitle').textContent = [tocItem?.label,
-            sectionTime != null ? t('%s left', formatMinutes(sectionTime)) : ''].filter(Boolean).join(' · ')
-        $('#time-label').textContent = chapterLeft
+        setMarquee($('#subtitle'), [tocItem?.label,
+            sectionTime != null ? t('%s left', formatMinutes(sectionTime)) : ''].filter(Boolean).join(' · '))
+        setMarquee($('#time-label'), chapterLeft)
         $('#time-label').title = bookLeft
         $('#progress-button').title = [Number.isFinite(fraction) ? percentFormat.format(fraction) : '', bookLeft]
             .filter(Boolean).join(' · ')
 
         this.data.lastLocation = cfi
         if (Number.isFinite(location?.current) && location.total) this.data.progress = [location.current, location.total]
+        // the library shows exactly the percentage seen here
+        if (Number.isFinite(fraction)) this.data.fraction = fraction
         this.save()
         this.#updateBookmarkButton()
+    }
+
+    // Pages as laid out on this screen: the current section is counted
+    // exactly, the rest of the book is estimated from the text per page
+    // measured so far (it changes with font size and window size)
+    #pageDensity = new Map() // section index -> characters per screen page
+    #screenPages(detail) {
+        const renderer = this.view?.renderer
+        if (!renderer || this.view.isFixedLayout || prefs.flow !== 'paginated') return null
+        const index = detail.section?.current
+        const pages = (renderer.pages ?? 0) - 2 // without the blank pages at both ends
+        const sizes = this.book.sections.map(s => s.linear === 'no' ? 0 : (s.size ?? 0))
+        if (index == null || !(pages > 0) || !sizes[index]) return null
+        this.#pageDensity.set(index, sizes[index] / pages)
+        const densities = [...this.#pageDensity.values()]
+        const density = densities.reduce((a, b) => a + b, 0) / densities.length
+        const before = sizes.slice(0, index).reduce((a, b) => a + b, 0)
+        const after = sizes.slice(index + 1).reduce((a, b) => a + b, 0)
+        const page = Math.min(Math.max(renderer.page ?? 1, 1), pages)
+        const current = Math.round(before / density) + page
+        const total = Math.round(before / density) + pages + Math.round(after / density)
+        return { current, total: Math.max(current, total) }
     }
 
     #onLoad({ doc, index }) {
@@ -1370,8 +1445,9 @@ $('#search-button').addEventListener('click', () => reader.openSearch())
 $('#bookmark-button').addEventListener('click', () => reader.toggleBookmark())
 $('#tts-button').addEventListener('click', () => reader.speech.toggle())
 $('#tts-play').addEventListener('click', () => reader.speech.toggle())
-new ResizeObserver(([entry]) => document.documentElement.style.setProperty('--tts-height',
-    `${entry.target.getBoundingClientRect().height}px`)).observe($('#tts-bar'))
+// (in the next frame, so the layout change does not loop the observer)
+new ResizeObserver(([entry]) => requestAnimationFrame(() => document.documentElement.style.setProperty('--tts-height',
+    `${entry.target.getBoundingClientRect().height}px`))).observe($('#tts-bar'))
 $('#tts-prev').addEventListener('click', () => reader.speech.prev())
 $('#tts-next').addEventListener('click', () => reader.speech.next())
 $('#tts-stop').addEventListener('click', () => reader.speech.stop())
@@ -1384,6 +1460,12 @@ $('#tts-rate').addEventListener('change', e => {
     prefs.ttsRate = parseFloat(e.target.value)
     savePrefs(prefs)
     reader.speech.setRate(prefs.ttsRate)
+})
+$('#tts-highlight').value = ['word', 'sentence', 'paragraph'].includes(prefs.ttsHighlight) ? prefs.ttsHighlight : 'sentence'
+$('#tts-highlight').addEventListener('change', e => {
+    prefs.ttsHighlight = e.target.value
+    savePrefs(prefs)
+    reader.speech.setHighlight()
 })
 $('#tts-voice').addEventListener('change', e => {
     prefs.ttsVoice = e.target.value
@@ -1464,6 +1546,12 @@ $('#flow-buttons').addEventListener('click', e => {
     const f = e.target.closest('button')?.dataset.flow
     if (f) reader.setPref('flow', f)
 })
+$('#page-number-buttons').addEventListener('click', e => {
+    const mode = e.target.closest('button')?.dataset.pages
+    if (!mode) return
+    reader.setPref('pageNumbers', mode)
+    reader.refreshLocation()
+})
 $('#column-buttons').addEventListener('click', e => {
     const c = e.target.closest('button')?.dataset.columns
     if (c) reader.setPref('maxColumnCount', +c)
@@ -1536,6 +1624,7 @@ document.addEventListener('pointermove', e => {
 // React to preference changes from other windows and the system theme
 onPrefsChanged(() => reader.applyAppearance())
 darkQuery.addEventListener('change', () => reader.applyAppearance())
+window.addEventListener('resize', debounce(() => reader.clearPageDensity(), 200))
 
 if (!isMobile) {
     // Native drag and drop opens dropped books in new windows

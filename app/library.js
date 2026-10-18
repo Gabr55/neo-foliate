@@ -1,7 +1,7 @@
 import {
     api, t, el, icon, translateDOM, renderIcons, pickBooks, loadFile, fileName, isMobile, showDialog,
     pushOverlay, popOverlay,
-    formatLanguageMap, formatAuthors, progressFraction, percentFormat, locale, debounce,
+    formatLanguageMap, formatAuthors, bookFraction, percentFormat, locale, debounce,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
 } from './common.js'
 import { makeBook } from './foliate-js/view.js'
@@ -11,7 +11,12 @@ import { isAndroid, android, onAndroid } from './android.js'
 
 const $ = document.querySelector.bind(document)
 await initPrefs()
-applyColorScheme(prefs.colorScheme)
+// The library has its own light/dark setting, separate from the books'
+// themes; until chosen it follows the system
+const systemDark = matchMedia('(prefers-color-scheme: dark)')
+const libraryScheme = () => prefs.libraryScheme === 'light' || prefs.libraryScheme === 'dark'
+    ? prefs.libraryScheme : systemDark.matches ? 'dark' : 'light'
+applyColorScheme(libraryScheme())
 translateDOM()
 renderIcons()
 if (isMobile) $('#empty p').textContent = t('Tap + to add books')
@@ -99,7 +104,7 @@ const sorters = {
     recent: (a, b) => getRecent(b) - getRecent(a),
     title: (a, b) => collator.compare(getTitle(a), getTitle(b)),
     author: (a, b) => collator.compare(getAuthor(a), getAuthor(b)) || sorters.title(a, b),
-    progress: (a, b) => (progressFraction(b.data.progress) ?? -1) - (progressFraction(a.data.progress) ?? -1),
+    progress: (a, b) => (bookFraction(b.data) ?? -1) - (bookFraction(a.data) ?? -1),
 }
 
 const matches = (item, query) => {
@@ -110,7 +115,7 @@ const matches = (item, query) => {
 }
 
 const renderItem = item => {
-    const frac = progressFraction(item.data.progress)
+    const frac = bookFraction(item.data)
     const progressLabel = frac == null ? t('New') : frac >= 1 ? t('Finished') : percentFormat.format(frac)
     const elem = el('div', {
         class: 'book' + (item.exists ? '' : ' missing'),
@@ -180,11 +185,11 @@ const renderContinue = (query, count) => {
     const box = $('#continue')
     const heading = $('#books-heading')
     const item = !isMobile || query ? null : items
-        .filter(i => i.exists && i.data.lastOpened && (progressFraction(i.data.progress) ?? 1) < 1)
+        .filter(i => i.exists && i.data.lastOpened && (bookFraction(i.data) ?? 1) < 1)
         .sort(sorters.recent)[0]
     box.hidden = heading.hidden = !item
     if (!item) return
-    const frac = progressFraction(item.data.progress) ?? 0
+    const frac = bookFraction(item.data) ?? 0
     heading.textContent = `${t('All books')} · ${count}`
     box.replaceChildren(
         el('div', { class: 'continue-label' }, t('Continue reading')),
@@ -215,7 +220,7 @@ const render = () => {
     for (const b of document.querySelectorAll('#view-menu [data-sort]'))
         b.setAttribute('aria-pressed', b.dataset.sort === prefs.librarySort)
     for (const b of document.querySelectorAll('#view-menu [data-scheme]'))
-        b.setAttribute('aria-pressed', b.dataset.scheme === prefs.colorScheme)
+        b.setAttribute('aria-pressed', b.dataset.scheme === libraryScheme())
 }
 
 let lastListing = ''
@@ -291,9 +296,10 @@ const importBooks = async paths => {
     for (const [i, path] of paths.entries()) {
         toast(`${t('Importing…')} ${i + 1}/${paths.length}`, 0)
         try {
-            const book = await makeBook(await loadFile(path))
-            const key = await ensureIdentifier(book, path)
-            await registerBook(key, path, book)
+            const stored = await api.storeBook(path).catch(() => path)
+            const book = await makeBook(await loadFile(stored))
+            const key = await ensureIdentifier(book, stored)
+            await registerBook(key, stored, book)
         } catch (e) {
             console.error(e)
             toast(t('Could not open “%s”', fileName(path)))
@@ -344,7 +350,7 @@ $('#view-menu').addEventListener('click', e => {
     if (view) prefs.libraryView = view
     if (sort) prefs.librarySort = sort
     if (scheme) {
-        prefs.colorScheme = scheme
+        prefs.libraryScheme = scheme
         applyColorScheme(scheme)
         if (isAndroid) syncSystemBars()
     }
@@ -368,12 +374,11 @@ const showAbout = async () => {
 }
 
 // Keep the preferred color scheme in sync with reader windows
-const isDark = () => prefs.colorScheme === 'dark'
-    || (prefs.colorScheme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+const isDark = () => libraryScheme() === 'dark'
 const syncSystemBars = () => android.setSystemBars(!isDark())
 
 onPrefsChanged(() => {
-    applyColorScheme(prefs.colorScheme)
+    applyColorScheme(libraryScheme())
     syncSystemBars()
     render()
 })
@@ -406,7 +411,7 @@ if (isAndroid) {
     android.setImmersive(false)
     android.setBrightness(-1)
     syncSystemBars()
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncSystemBars)
+    systemDark.addEventListener('change', syncSystemBars)
     const openPending = async () => {
         const paths = await android.takePendingFiles(await api.libraryFilesPath()).catch(() => [])
         if (paths?.length) importBooks(paths)
@@ -418,6 +423,11 @@ if (isAndroid) {
 api.listen('library-changed', debounce(refresh, 300))
 // Coming back from a book on phones may restore this page from the
 // back/forward cache, with the progress it had before
+// Following the system until a scheme is chosen
+systemDark.addEventListener('change', () => {
+    applyColorScheme(libraryScheme())
+    render()
+})
 window.addEventListener('pageshow', e => {
     if (e.persisted) refresh()
 })

@@ -525,6 +525,11 @@ foliate-view::part(head), foliate-view::part(foot) {
     background: var(--accent);
 }
 
+#time-label {
+    min-width: 0;
+    max-width: 40%;
+}
+
 #location-label, #percent-label, #time-label {
     white-space: nowrap;
     opacity: .7;
@@ -898,7 +903,7 @@ foliate-view::part(head), foliate-view::part(foot) {
     text-overflow: ellipsis;
 }
 
-.mobile #subtitle:empty {
+.mobile #subtitle:empty, .mobile #subtitle:has(> .marquee-text:empty) {
     display: none !important;
 }
 
@@ -1186,4 +1191,16 @@ foliate-view::part(head), foliate-view::part(foot) {
 #tts-rate-value {
     min-width: 2.6em;
     font-variant-numeric: tabular-nums;
+}
+
+#tts-highlight {
+    max-width: 150px;
+    background: transparent;
+    color: inherit;
+    border-color: color-mix(in srgb, var(--book-fg) 20%, transparent);
+}
+
+.mobile #tts-highlight {
+    flex: 0 1 34%;
+    min-width: 0;
 }

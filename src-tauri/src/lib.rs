@@ -248,6 +248,53 @@ fn library_files_path(app: AppHandle) -> Result<String, String> {
     Ok(library_files_dir(&app)?.to_string_lossy().into_owned())
 }
 
+// Keep the app's own copy of a book: opened files are copied into the
+// library folder and read from there, so moving or deleting the original
+// does not break the library. Returns the path of the copy.
+#[tauri::command]
+async fn store_book(app: AppHandle, path: String) -> Result<String, String> {
+    let dir = library_files_dir(&app)?;
+    let source = PathBuf::from(&path);
+    let source_canonical = source.canonicalize().map_err(err)?;
+    if let Ok(dir_canonical) = dir.canonicalize() {
+        if source_canonical.starts_with(&dir_canonical) {
+            return Ok(path);
+        }
+    }
+    let name = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("book")
+        .to_string();
+    let size = fs::metadata(&source).map_err(err)?.len();
+    let mut dest = dir.join(&name);
+    // The same book opened again reuses its copy; another file with the same
+    // name gets a numbered one
+    if dest.exists() && fs::metadata(&dest).map(|m| m.len()).unwrap_or(0) != size {
+        let stem = Path::new(&name).file_stem().and_then(|s| s.to_str()).unwrap_or("book").to_string();
+        let ext = Path::new(&name).extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+        let mut n = 2;
+        loop {
+            dest = dir.join(format!("{stem} ({n}){ext}"));
+            if !dest.exists() || fs::metadata(&dest).map(|m| m.len()).unwrap_or(0) == size {
+                break;
+            }
+            n += 1;
+        }
+    }
+    if !dest.exists() {
+        let tmp = dest.with_extension("part");
+        fs::copy(&source, &tmp).map_err(err)?;
+        fs::rename(&tmp, &dest).map_err(err)?;
+    }
+    Ok(dest.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn cover_exists(app: AppHandle, key: String) -> Result<bool, String> {
+    Ok(cover_path(&app, &key)?.exists())
+}
+
 // Scratch space for picked files that are read once (e.g. annotation imports)
 #[tauri::command]
 fn temp_files_path(app: AppHandle) -> Result<String, String> {
@@ -412,6 +459,8 @@ pub fn run() {
             library_list,
             library_files_path,
             temp_files_path,
+            store_book,
+            cover_exists,
             cover_set,
             cover_get,
             write_text_file,
@@ -420,6 +469,11 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            // The page reads stored books straight from disk (asset protocol),
+            // limited to the library folder wherever it is
+            if let Ok(dir) = library_files_dir(&handle) {
+                let _ = app.asset_protocol_scope().allow_directory(dir, true);
+            }
             show_library_window(&handle)?;
             #[cfg(desktop)]
             {

@@ -70,6 +70,35 @@ body {
     display: none !important;
 }
 
+.marquee {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip !important;
+}
+
+.marquee-text {
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.marquee-scroll .marquee-text {
+    animation: marquee var(--marquee-duration, 8s) ease-in-out infinite;
+}
+
+@keyframes marquee {
+    0%, 18% { transform: translateX(0); }
+    82%, 100% { transform: translateX(var(--marquee-shift, 0)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .marquee-scroll .marquee-text {
+        animation: none;
+    }
+    .marquee {
+        text-overflow: ellipsis !important;
+    }
+}
+
 .icon {
     display: inline-flex;
     flex: none;

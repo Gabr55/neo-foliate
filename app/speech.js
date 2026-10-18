@@ -45,6 +45,90 @@ const splitSentences = (text, lang) => {
     return parts.length ? parts : [{ start: 0, end: text.length }]
 }
 
+// Spoken text split into utterances: whole blocks read without breaks;
+// very long ones are cut at sentence ends to stay within engine limits
+const splitForSpeech = (text, lang, maxLength = 600) => {
+    if (text.length <= maxLength) return [{ start: 0, end: text.length }]
+    const parts = []
+    for (const sentence of splitSentences(text, lang)) {
+        const last = parts.at(-1)
+        if (last && sentence.end - last.start <= maxLength) last.end = sentence.end
+        else parts.push({ ...sentence })
+    }
+    return parts
+}
+
+// --- What the marker covers: the word, its sentence or its paragraph ---
+
+const isBlockElement = el => {
+    const display = el.ownerDocument.defaultView?.getComputedStyle(el).display ?? 'block'
+    return !display.startsWith('inline') && display !== 'contents' && display !== 'ruby'
+}
+
+const blockOf = node => {
+    let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+    while (el && el !== el.ownerDocument.body && !isBlockElement(el)) el = el.parentElement
+    return el ?? node.ownerDocument.body
+}
+
+// Text nodes of a block with their offsets, and its sentence spans (cached)
+const blockTexts = new WeakMap()
+const blockText = (block, lang) => {
+    let info = blockTexts.get(block)
+    if (info) return info
+    const nodes = []
+    let text = ''
+    const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        nodes.push({ node, start: text.length })
+        text += node.nodeValue
+    }
+    info = { nodes, text, sentences: splitSentences(text, lang) }
+    blockTexts.set(block, info)
+    return info
+}
+
+const pointAt = (nodes, offset) => {
+    let i = nodes.length - 1
+    while (i > 0 && nodes[i].start > offset) i--
+    const { node, start } = nodes[i]
+    return [node, Math.min(Math.max(offset - start, 0), node.nodeValue.length)]
+}
+
+export const expandRange = (range, granularity, lang) => {
+    if (granularity === 'word') return range
+    const block = blockOf(range.startContainer)
+    const doc = range.startContainer.ownerDocument
+    const result = doc.createRange()
+    if (granularity === 'paragraph') {
+        result.selectNodeContents(block)
+        return result
+    }
+    const { nodes, sentences } = blockText(block, lang)
+    const entry = nodes.find(n => n.node === range.startContainer)
+    if (!entry) return range
+    const offset = entry.start + range.startOffset
+    const sentence = sentences.find(s => s.start <= offset && offset < s.end) ?? sentences.at(-1)
+    if (!sentence) return range
+    // trim the spaces around the sentence
+    const span = blockTexts.get(block).text.slice(sentence.start, sentence.end)
+    const start = sentence.start + (span.length - span.trimStart().length)
+    const end = sentence.end - (span.length - span.trimEnd().length)
+    result.setStart(...pointAt(nodes, start))
+    result.setEnd(...pointAt(nodes, end))
+    return result
+}
+
+const sameRange = (a, b) => {
+    try {
+        return a && b && a.startContainer.ownerDocument === b.startContainer.ownerDocument
+            && a.compareBoundaryPoints(Range.START_TO_START, b) === 0
+            && a.compareBoundaryPoints(Range.END_TO_END, b) === 0
+    } catch {
+        return false
+    }
+}
+
 const charAtWeight = (positions, weight) => {
     let lo = 0, hi = positions.length - 1
     while (lo < hi) {
@@ -153,6 +237,12 @@ export class Speech {
         if (this.state === 'playing') this.#scheduleRestart()
     }
 
+    // The marking changed: redraw now and read on with the new split
+    setHighlight() {
+        this.#marked = null
+        if (this.state === 'playing') this.#scheduleRestart()
+    }
+
     setRate(rate) {
         this.#rate = rate
         if (this.state === 'playing') this.#scheduleRestart()
@@ -192,17 +282,33 @@ export class Speech {
         // relocation (position, progress, saving) each time, which made the
         // marker lag behind the voice on phones.
         if (!this.#isOnScreen(range)) renderer.scrollToAnchor?.(range)
+        // the marker covers the word, its sentence or its paragraph
+        let marked
+        try {
+            marked = expandRange(range, this.granularity, this.reader.view?.language?.canonical)
+        } catch (e) {
+            console.warn(e)
+            marked = range
+        }
+        if (sameRange(marked, this.#marked)) return
+        this.#marked = marked
         const contents = renderer.getContents()
             .find(c => c.doc === range.startContainer?.ownerDocument)
         const color = getComputedStyle(document.documentElement).getPropertyValue('--tts-marker').trim()
         try {
-            contents?.overlayer?.add(MARK_KEY, range, roundedMark, { color: color || 'currentColor' })
+            contents?.overlayer?.add(MARK_KEY, marked, roundedMark, { color: color || 'currentColor' })
         } catch (e) {
             console.warn(e)
         }
     }
 
+    #marked = null
+    get granularity() {
+        return ['word', 'sentence', 'paragraph'].includes(prefs.ttsHighlight) ? prefs.ttsHighlight : 'sentence'
+    }
+
     #clearHighlight() {
+        this.#marked = null
         for (const { overlayer } of this.reader.view?.renderer?.getContents?.() ?? [])
             overlayer?.remove(MARK_KEY)
     }
@@ -259,7 +365,11 @@ export class Speech {
         }
 
         const positions = weightedPositions(text)
-        const parts = splitSentences(text, utteranceLang)
+        // Word marking needs every sentence start as a sync point; sentence and
+        // paragraph marking read whole blocks, without breaks between sentences
+        const parts = this.granularity === 'word'
+            ? splitSentences(text, utteranceLang)
+            : splitForSpeech(text, utteranceLang)
         let started = 0, spoke = false, requested = 0, wordBoundaries = false
         let anchorTime = 0, anchorWeight = 0, timer = null
         const tick = () => {
