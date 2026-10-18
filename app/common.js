@@ -43,6 +43,7 @@ export const api = {
     // Copy a book into the library folder (no-op if already there)
     storeBook: path => invoke('store_book', { path }),
     coverExists: key => invoke('cover_exists', { key }),
+    discardCopy: path => invoke('discard_copy', { path }),
     // A path the backend can read, for a file picked once (content:// on Android)
     readablePath: async path => isAndroid && path?.startsWith('content:')
         ? android.copyToLibrary(path, await invoke('temp_files_path'))
@@ -57,7 +58,16 @@ export const api = {
     window: () => tauri.window.getCurrentWindow(),
 }
 
-export const bookExtensions = ['epub', 'mobi', 'azw', 'azw3', 'kf8', 'fb2', 'fbz', 'cbz', 'pdf', 'zip']
+export const bookExtensions = ['epub', 'mobi', 'azw', 'azw3', 'kf8', 'fb2', 'fbz', 'cbz', 'zip']
+
+// PDF is not supported for now: foliate-js's PDF engine needs browser
+// features many Android web views lack. Recognized by the file header.
+export class PDFNotSupportedError extends Error {}
+export const rejectPDF = async file => {
+    const head = new Uint8Array(await file.slice(0, 5).arrayBuffer())
+    if (String.fromCharCode(...head) === '%PDF-') throw new PDFNotSupportedError('PDF is not supported yet')
+    return file
+}
 
 // On Android the picker returns content:// URIs; copy them into the app's
 // own storage so they keep working (and have a real path)
@@ -220,6 +230,7 @@ const strings = {
         'Go to Reference': 'Перейти к примечанию',
         'More': 'Ещё',
         'Listen': 'Слушать',
+        'PDF is not supported yet': 'PDF пока не поддерживается',
         'Highlight while reading': 'Подсветка при чтении',
         'Sentence': 'Предложение',
         'Paragraph': 'Абзац',

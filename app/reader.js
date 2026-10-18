@@ -1,6 +1,6 @@
 import {
     api, t, el, icon, translateDOM, renderIcons, loadFile, fileName, isMac, isMobile, pickBooks,
-    showDialog, pushOverlay, popOverlay, setMarquee,
+    showDialog, pushOverlay, popOverlay, setMarquee, rejectPDF, PDFNotSupportedError,
     formatLanguageMap, formatAuthors, percentFormat, debounce, themes, invertColor,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
 } from './common.js'
@@ -20,13 +20,15 @@ const appWindow = api.window()
 // Start reading and parsing the book right away, while the rest of the page
 // (preferences, interface) sets up
 const openBook = async path => {
+    // Check the file before keeping a copy of it
+    const file = await rejectPDF(await loadFile(path))
+    const book = await makeBook(file)
     // Work on the app's own copy of the book; Android imports are copies already
     const stored = isAndroid ? path : await api.storeBook(path).catch(e => {
         console.warn(e)
         return path
     })
-    const file = await loadFile(stored)
-    return { path: stored, book: await makeBook(file) }
+    return { path: stored, book }
 }
 const earlyBook = openBook(new URLSearchParams(location.search).get('path'))
 earlyBook.catch(() => {}) // reported when the reader opens
@@ -329,7 +331,10 @@ class Reader {
             this.book = book
         } catch (e) {
             console.error(e)
-            const message = e instanceof UnsupportedTypeError ? t('File type not supported')
+            // a copy imported on Android is of no use then
+            if (e instanceof PDFNotSupportedError && isAndroid) api.discardCopy(this.path).catch(() => {})
+            const message = e instanceof PDFNotSupportedError ? t('PDF is not supported yet')
+                : e instanceof UnsupportedTypeError ? t('File type not supported')
                 : e instanceof NotFoundError ? t('File not found')
                     : (e?.message ?? String(e))
             return this.showError(t('Could not open “%s”', name), message)

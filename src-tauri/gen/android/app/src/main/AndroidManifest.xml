@@ -5,7 +5,13 @@
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <!-- Auto Backup is off: after a reinstall it restored a stale snapshot,
+         so some books came back and newer ones did not. hasFragileUserData
+         makes the system offer to keep the library when the app is
+         uninstalled; updating (installing over) always keeps it. -->
     <application
+        android:allowBackup="false"
+        android:hasFragileUserData="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.neo_foliate"
@@ -38,7 +44,6 @@
                 <data android:mimeType="application/x-zip-compressed-fb2" />
                 <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="application/x-cbz" />
-                <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <intent-filter>
@@ -54,7 +59,6 @@
                 <data android:mimeType="application/x-zip-compressed-fb2" />
                 <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="application/x-cbz" />
-                <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->

@@ -8,7 +8,7 @@ Foliate is a GTK app for Linux. Neo Foliate brings the same reading experience t
 
 ## Features
 
-- Formats: EPUB, MOBI, KF8 (AZW3), FB2, FBZ, CBZ and PDF (experimental)
+- Formats: EPUB, MOBI, KF8 (AZW3), FB2, FBZ and CBZ
 - Library with covers, reading progress, search and sorting, plus drag & drop import
 - Paginated or scrolled layout with up to 3 columns
 - Font size, font family, line spacing, margins, max width, justification and hyphenation

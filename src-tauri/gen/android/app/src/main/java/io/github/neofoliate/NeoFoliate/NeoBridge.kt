@@ -116,9 +116,18 @@ class NeoBridge(private val activity: Activity, private val webView: WebView) {
             var n = 2
             while (dest.exists()) dest = File(folder, "$base ($n)$ext").also { n++ }
         }
+        if (dest.exists()) return dest.absolutePath // the same book again
         val input = activity.contentResolver.openInputStream(uri)
             ?: throw IllegalStateException("Cannot open $uri")
-        input.use { src -> FileOutputStream(dest).use { src.copyTo(it, 1 shl 16) } }
+        // copy under a unique temporary name, then rename: an interrupted
+        // copy never leaves a broken book behind
+        val tmp = File(folder, ".${dest.name}.${System.nanoTime()}.part")
+        try {
+            input.use { src -> FileOutputStream(tmp).use { src.copyTo(it, 1 shl 16) } }
+            if (!tmp.renameTo(dest)) throw IllegalStateException("Cannot save ${dest.name}")
+        } finally {
+            tmp.delete()
+        }
         return dest.absolutePath
     }
 

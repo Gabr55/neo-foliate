@@ -49,9 +49,23 @@ fn read_json(path: &Path) -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
+// A temporary name next to `path` that no other write uses at the same
+// time. (Replacing the extension was not enough: "book.fb2" and "book.fbz"
+// shared "book.part", so two books opened at once overwrote each other.)
+fn temp_path(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    path.with_file_name(format!(".{name}.{}-{n}.part", std::process::id()))
+}
+
 fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), String> {
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, contents).map_err(err)?;
+    let tmp = temp_path(path);
+    if let Err(e) = fs::write(&tmp, contents) {
+        let _ = fs::remove_file(&tmp);
+        return Err(err(e));
+    }
     fs::rename(&tmp, path).map_err(err)
 }
 
@@ -283,11 +297,20 @@ async fn store_book(app: AppHandle, path: String) -> Result<String, String> {
         }
     }
     if !dest.exists() {
-        let tmp = dest.with_extension("part");
-        fs::copy(&source, &tmp).map_err(err)?;
+        let tmp = temp_path(&dest);
+        if let Err(e) = fs::copy(&source, &tmp) {
+            let _ = fs::remove_file(&tmp);
+            return Err(err(e));
+        }
         fs::rename(&tmp, &dest).map_err(err)?;
     }
     Ok(dest.to_string_lossy().into_owned())
+}
+
+// Remove a copy made for a book that then failed to open
+#[tauri::command]
+fn discard_copy(app: AppHandle, path: String) {
+    remove_library_copy(&app, &path);
 }
 
 #[tauri::command]
@@ -460,6 +483,7 @@ pub fn run() {
             library_files_path,
             temp_files_path,
             store_book,
+            discard_copy,
             cover_exists,
             cover_set,
             cover_get,

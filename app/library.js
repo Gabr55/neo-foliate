@@ -1,6 +1,6 @@
 import {
     api, t, el, icon, translateDOM, renderIcons, pickBooks, loadFile, fileName, isMobile, showDialog,
-    pushOverlay, popOverlay,
+    pushOverlay, popOverlay, rejectPDF, PDFNotSupportedError,
     formatLanguageMap, formatAuthors, bookFraction, percentFormat, locale, debounce,
     prefs, initPrefs, onPrefsChanged, savePrefs, applyColorScheme, showPopover, closePopover, isPopoverOpen,
 } from './common.js'
@@ -296,13 +296,18 @@ const importBooks = async paths => {
     for (const [i, path] of paths.entries()) {
         toast(`${t('Importing…')} ${i + 1}/${paths.length}`, 0)
         try {
+            // check and parse first, then keep a copy
+            const book = await makeBook(await rejectPDF(await loadFile(path)))
             const stored = await api.storeBook(path).catch(() => path)
-            const book = await makeBook(await loadFile(stored))
             const key = await ensureIdentifier(book, stored)
             await registerBook(key, stored, book)
         } catch (e) {
             console.error(e)
-            toast(t('Could not open “%s”', fileName(path)))
+            // Android picks are copied in before this point; drop the copy
+            api.discardCopy(path).catch(() => {})
+            toast(e instanceof PDFNotSupportedError
+                ? `${fileName(path)}: ${t('PDF is not supported yet')}`
+                : t('Could not open “%s”', fileName(path)))
         }
     }
     $('#toast').hidden = true

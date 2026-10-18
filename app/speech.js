@@ -5,8 +5,8 @@ import { isAndroid, AndroidSynth } from './android.js'
 // Android engine through the bridge).
 //
 // Engines do not reliably report which word they are saying, so the marker
-// does not try to guess: each block goes to the voice sentence by sentence,
-// and the sentence handed to the voice is marked when it starts playing.
+// does not try to guess: each block goes to the voice in pieces of whole
+// sentences, and the piece handed to the voice is marked when it starts.
 
 // The marker is drawn on the annotation layer instead of selecting text: a
 // real selection brings up handles and menus on phones. The prefix makes
@@ -29,6 +29,22 @@ const splitSentences = (text, lang) => {
         else parts.push({ start: index, end: index + segment.length })
     }
     return parts.length ? parts : [{ start: 0, end: text.length }]
+}
+
+// What goes to the voice at once: whole sentences, grouped up to about
+// this many characters. Every hand-over costs a small pause while the
+// engine starts again, so a few sentences per piece read more smoothly,
+// while the marked piece stays small enough to follow.
+const PIECE_LENGTH = 220
+
+const splitPieces = (text, lang) => {
+    const pieces = []
+    for (const sentence of splitSentences(text, lang)) {
+        const last = pieces.at(-1)
+        if (last && sentence.end - last.start <= PIECE_LENGTH) last.end = sentence.end
+        else pieces.push({ ...sentence })
+    }
+    return pieces
 }
 
 // Soft rounded marker, a little larger than the text
@@ -240,7 +256,7 @@ export class Speech {
         if (!text.trim()) return this.#onEnd(generation)
         const utteranceLang = this.#voice?.lang || lang || this.reader.view?.language?.canonical || ''
 
-        const parts = splitSentences(text, utteranceLang)
+        const parts = splitPieces(text, utteranceLang)
         let spoke = false, requested = 0
         const utterances = parts.map(({ start, end }, i) => {
             const partText = text.slice(start, end)
