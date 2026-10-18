@@ -121,7 +121,8 @@ const renderItem = item => {
         class: 'book' + (item.exists ? '' : ' missing'),
         role: 'listitem',
         tabIndex: 0,
-        title: isMobile ? '' : item.path ?? '',
+        // the full title on hover, in case it is cut short
+        title: isMobile ? '' : [getTitle(item), getAuthor(item)].filter(Boolean).join(' — '),
         onclick: () => {
             if (elem.dataset.longPressed) return delete elem.dataset.longPressed
             openItem(item)
