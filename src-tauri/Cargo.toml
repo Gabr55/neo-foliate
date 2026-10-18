@@ -1,6 +1,6 @@
 [package]
 name = "neo-foliate"
-version = "0.4.1"
+version = "0.4.2"
 description = "Read e-books in style — a macOS, Windows and Android port of Foliate"
 authors = ["John Factotum", "Neo Foliate contributors"]
 license = "GPL-3.0-or-later"
